@@ -1,4 +1,5 @@
 from datetime import datetime
+from difflib import SequenceMatcher
 from io import BytesIO
 from pathlib import Path
 import os
@@ -107,6 +108,67 @@ def clean_text(text: str) -> str:
             lines.append(cleaned_line)
 
     return "\n".join(lines)
+
+
+def extract_event_title(text: str) -> str:
+    title_patterns = [
+        r"(?:제|A[lI]?|[|Il!])\s*\d+\s*(?:회|외)\s+"
+        r"전국\s+[^\n,\"']{1,30}?공모전",
+        r"(?:제|A[lI]?|[|Il!])\s*\d+\s*(?:회|외)\s+"
+        r"[^\n,\"']{1,40}?공모전",
+    ]
+
+    for pattern in title_patterns:
+        title_match = re.search(pattern, text, re.IGNORECASE)
+
+        if not title_match:
+            continue
+
+        title = re.sub(r"\s+", " ", title_match.group(0)).strip()
+        title = re.sub(
+            r"^(?:제|A[lI]?|[|Il!])\s*(\d+)\s*(?:회|외)",
+            r"제\1회",
+            title,
+            flags=re.IGNORECASE,
+        )
+
+        if re.search(r"\bICT\s*융합", text, re.IGNORECASE):
+            title = re.sub(
+                r"(전국\s+)ICTS?\s*공모전",
+                r"\1ICT 융합 공모전",
+                title,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+
+            middle_match = re.search(
+                r"전국\s+(.{1,10}?)\s*융합\s*공모전",
+                title,
+                re.IGNORECASE,
+            )
+
+            if middle_match:
+                middle = middle_match.group(1).strip().upper()
+                known_acronyms = {
+                    "AI",
+                    "ICT",
+                    "IT",
+                    "IOT",
+                    "SW",
+                }
+
+                if middle not in known_acronyms:
+                    title = re.sub(
+                        r"(전국\s+).{1,10}?(\s*융합\s*공모전)",
+                        r"\1ICT \2",
+                        title,
+                        count=1,
+                        flags=re.IGNORECASE,
+                    )
+
+        return re.sub(r"\s+", " ", title).strip()
+
+    return ""
 
 
 def extract_year(text: str, filename: str | None) -> int:
@@ -244,7 +306,7 @@ def extract_schedule(text: str, filename: str | None) -> dict:
         if location:
             break
 
-    title = ""
+    title = extract_event_title(text)
     matched_title_lines = []
 
     excluded_words = (
@@ -261,40 +323,41 @@ def extract_schedule(text: str, filename: str | None) -> dict:
     )
 
     # 첫 줄과 다음 줄이 제목/모집안내로 나뉜 OCR 결과도 처리합니다.
-    for index, line in enumerate(lines):
-        candidate = line.strip("[]-· ")
+    if not title:
+        for index, line in enumerate(lines):
+            candidate = line.strip("[]-· ")
 
-        if any(
-            word.lower() in candidate.lower()
-            for word in excluded_words
-        ):
-            continue
+            if any(
+                word.lower() in candidate.lower()
+                for word in excluded_words
+            ):
+                continue
 
-        if re.search(
-            r"\d{1,2}\s*월\s*\d{1,2}\s*일",
-            candidate,
-        ):
-            continue
+            if re.search(
+                r"\d{1,2}\s*월\s*\d{1,2}\s*일",
+                candidate,
+            ):
+                continue
 
-        normalized = normalize_title(candidate)
+            normalized = normalize_title(candidate)
 
-        if len(normalized) < 4:
-            continue
+            if len(normalized) < 4:
+                continue
 
-        if normalized in {"모집안내", "안내"}:
-            continue
+            if normalized in {"모집안내", "안내"}:
+                continue
 
-        title = normalized
-        matched_title_lines.append(line)
+            title = normalized
+            matched_title_lines.append(line)
 
-        if (
-            index + 1 < len(lines)
-            and lines[index + 1].replace(" ", "")
-            in {"모집안내", "안내"}
-        ):
-            matched_title_lines.append(lines[index + 1])
+            if (
+                index + 1 < len(lines)
+                and lines[index + 1].replace(" ", "")
+                in {"모집안내", "안내"}
+            ):
+                matched_title_lines.append(lines[index + 1])
 
-        break
+            break
 
     memo_lines = []
 
@@ -395,34 +458,26 @@ def extract_schedule_timeline(
         if line.strip()
     ]
 
-    timeline_index = None
+    exact_dates = []
 
     for index, line in enumerate(raw_lines):
         compact_line = line.replace(" ", "")
 
-        if "추진일정" in compact_line:
-            timeline_index = index
-            break
+        if (
+            "추진일정" not in compact_line
+            and "평가절차" not in compact_line
+        ):
+            continue
 
-    if timeline_index is None:
-        return []
+        nearby_text = "\n".join(raw_lines[index : index + 8])
 
-    nearby_lines = raw_lines[
-        timeline_index : timeline_index + 5
-    ]
-
-    nearby_text = "\n".join(nearby_lines)
-
-    # OCR에서 월이 '윌'로 인식되는 경우를 보정합니다.
-    normalized_text = re.sub(
-        r"(?<=\d)윌",
-        "월",
-        nearby_text,
-    )
-
-    # 추진 일정 표에서 날짜를 나타내는 표현을 순서대로 찾습니다.
-    date_matches = list(
-        re.finditer(
+        # OCR에서 월이 '윌'로 인식되는 경우를 보정합니다.
+        normalized_text = re.sub(
+            r"(?<=\d)윌",
+            "월",
+            nearby_text,
+        )
+        date_matches = re.finditer(
             r"(?<!\d)"
             r"(?P<month>\d{1,2})"
             r"\s*(?:월|\.)\s*"
@@ -431,40 +486,36 @@ def extract_schedule_timeline(
             r"(?!\d)",
             normalized_text,
         )
-    )
+        current_dates = []
 
-    exact_dates = []
+        for match in date_matches:
+            month = int(match.group("month"))
+            day_text = match.group("day")
 
-    for match in date_matches:
-        month = int(match.group("month"))
-        day_text = match.group("day")
+            if not 1 <= month <= 12 or not day_text:
+                continue
 
-        if not 1 <= month <= 12:
-            continue
+            try:
+                parsed_date = datetime(
+                    year,
+                    month,
+                    int(day_text),
+                    0,
+                    0,
+                )
+            except ValueError:
+                continue
 
-        # 7.15, 9.15처럼 정확한 날짜만 현재 자동 일정으로 만듭니다.
-        if not day_text:
-            continue
-
-        day = int(day_text)
-
-        try:
-            parsed_date = datetime(
-                year,
-                month,
-                day,
-                0,
-                0,
+            current_dates.append(
+                (
+                    parsed_date,
+                    match.group(0).strip(),
+                )
             )
-        except ValueError:
-            continue
 
-        exact_dates.append(
-            (
-                parsed_date,
-                match.group(0).strip(),
-            )
-        )
+        if len(current_dates) >= 2:
+            exact_dates = current_dates
+            break
 
     if len(exact_dates) < 2:
         return []
@@ -492,10 +543,9 @@ def extract_schedule_timeline(
         f"{base_title} 접수 마감"
     ).strip()
 
-    common_memo = (
-        f"{memo}\n\n"
-        "※ 공고 이미지의 추진 일정 표에서 추출한 일정입니다."
-    ).strip()
+    start_memo = (
+        f"공고 시작: {start_date.strftime('%Y.%m.%d')} (종일)"
+    )
 
     start_candidate = make_schedule_candidate(
         title=start_title,
@@ -503,28 +553,54 @@ def extract_schedule_timeline(
             "%Y-%m-%dT%H:%M"
         ),
         location=location,
-        memo=common_memo,
+        memo=start_memo,
         source_text=start_source,
         event_type="application_start",
         all_day=True,
     )
 
+    deadline_hour = 18
+    deadline_minute = 0
+    deadline_time_match = re.search(
+        rf"(?<!\d){deadline_date.month}\s*[월.\-/]\s*"
+        rf"{deadline_date.day}\s*일?[^\n]{{0,20}}?"
+        r"(?P<hour>[01]?\d|2[0-3])\s*[:시]\s*"
+        r"(?P<minute>\d{2})?",
+        text,
+    )
+
+    if deadline_time_match:
+        deadline_hour = int(deadline_time_match.group("hour"))
+        deadline_minute = int(
+            deadline_time_match.group("minute") or 0
+        )
+
+    deadline_memo = (
+        f"접수 마감: {deadline_date.strftime('%Y.%m.%d')} "
+        f"{deadline_hour:02d}:{deadline_minute:02d}"
+    )
+
     deadline_candidate = make_schedule_candidate(
         title=deadline_title,
         start_time=deadline_date.replace(
-            hour=18,
-            minute=0,
+            hour=deadline_hour,
+            minute=deadline_minute,
         ).strftime("%Y-%m-%dT%H:%M"),
         location=location,
-        memo=common_memo,
+        memo=deadline_memo,
         source_text=deadline_source,
         event_type="application_deadline",
         all_day=False,
     )
 
-    deadline_candidate["warnings"].append(
-        "마감 시간은 상단 문구의 18:00을 기준으로 설정했습니다. 원문을 확인해 주세요."
-    )
+    if deadline_time_match:
+        deadline_candidate["warnings"].append(
+            "마감 시간은 포스터의 날짜·시간 문구를 기준으로 설정했습니다. 원문을 확인해 주세요."
+        )
+    else:
+        deadline_candidate["warnings"].append(
+            "마감 시간을 찾지 못해 18:00으로 설정했습니다. 원문을 확인해 주세요."
+        )
 
     return [
         start_candidate,
@@ -908,24 +984,25 @@ def extract_important_memos(text: str) -> list[dict]:
 
     memo_rules = [
         (
-            "준비물",
-            "preparation",
-            r"(?:준비물|지참물|구비서류|제출서류)",
+            "문의처",
+            "contact",
+            r"(?:문의|연락처|담당자|전화|E-?mail)",
         ),
         (
             "신청 및 접수",
             "application",
-            r"(?:신청|접수|온라인\s*접수|제출)",
+            r"(?:신청|접수|온라인\s*접수|제출|"
+            r"홈페이지|www\.|페이지.{0,30}등록)",
         ),
         (
-            "문의처",
-            "contact",
-            r"(?:문의|연락처|담당자|전화)",
+            "준비물",
+            "preparation",
+            r"(?:준비물|지참물|구비서류)",
         ),
         (
             "계정 정보",
             "account",
-            r"(?:아이디|ID|계정|로그인)",
+            r"(?:아이디(?!어)|\bID\b|계정|로그인)",
         ),
         (
             "결제 및 입금",
@@ -935,7 +1012,8 @@ def extract_important_memos(text: str) -> list[dict]:
         (
             "방문 안내",
             "visit",
-            r"(?:주차|출입|방문|입장|오시는\s*길)",
+            r"(?:주차장|주차\s*(?:가능|안내|불가|무료|유료)|"
+            r"출입|방문|입장|오시는\s*길)",
         ),
         (
             "민감정보",
@@ -955,7 +1033,49 @@ def extract_important_memos(text: str) -> list[dict]:
     )
 
     memos = []
-    seen = set()
+    seen: list[tuple[str, str]] = []
+    type_counts: dict[str, int] = {}
+    type_limits = {
+        "application": 2,
+        "contact": 1,
+        "preparation": 1,
+        "account": 1,
+        "payment": 1,
+        "visit": 1,
+        "sensitive": 1,
+    }
+    heading_words = {
+        "공모분야",
+        "신청요건",
+        "제출서류",
+        "접수및제출",
+        "평가절차",
+        "시상내역",
+        "수상자혜택및지원",
+    }
+
+    def memo_priority(line: str) -> int:
+        score = 0
+
+        if re.search(r"https?://|www\.", line, re.IGNORECASE):
+            score += 8
+
+        if re.search(r"홈페이지|페이지|접속", line):
+            score += 5
+
+        if re.search(r"등록|신청서|동의서|계획서|\d+\s*부", line):
+            score += 4
+
+        if re.search(
+            r"E-?mail|[\w.+-]+@[\w.-]+|\d{2,4}-\d{3,4}-\d{4}",
+            line,
+            re.IGNORECASE,
+        ):
+            score += 8
+
+        return score
+
+    lines.sort(key=memo_priority, reverse=True)
 
     for line in lines:
         matched_title = ""
@@ -972,15 +1092,111 @@ def extract_important_memos(text: str) -> list[dict]:
 
         normalized_line = line.strip(" -·")
 
-        deduplication_key = (
-            matched_type,
+        readable_text = re.sub(
+            r"[^0-9A-Za-z가-힣]",
+            "",
             normalized_line,
         )
+        compact_line = normalized_line.replace(" ", "")
 
-        if deduplication_key in seen:
+        if len(readable_text) < 8 or len(normalized_line) > 180:
             continue
 
-        seen.add(deduplication_key)
+        if compact_line.strip("|·ㆍ/[]()") in heading_words:
+            continue
+
+        if (
+            len(normalized_line) <= 30
+            and any(word in compact_line for word in heading_words)
+            and not re.search(r"\d|https?://|www\.", normalized_line)
+        ):
+            continue
+
+        if matched_type == "application" and not re.search(
+            r"(?:https?://|www\.|홈페이지|페이지|접속|등록|"
+            r"서류|신청서|동의서|계획서|마감|까지|\d+\s*부|"
+            r"\d{1,2}\s*월)",
+            normalized_line,
+            re.IGNORECASE,
+        ):
+            continue
+
+        if matched_type == "contact":
+            phone_match = re.search(
+                r"(?<!\d)(0\d{1,2})[-.\s](\d{3,4})[-.\s](\d{4})(?!\d)",
+                normalized_line,
+            )
+            email_match = re.search(
+                r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",
+                normalized_line,
+                re.IGNORECASE,
+            )
+            contact_parts = []
+
+            if phone_match:
+                contact_parts.append("-".join(phone_match.groups()))
+
+            if email_match:
+                contact_parts.append(email_match.group(0))
+
+            if contact_parts:
+                normalized_line = "문의: " + " / ".join(contact_parts)
+
+        if matched_type == "application":
+            url_match = re.search(
+                r"(?:https?://)?(?:www\.)?"
+                r"[A-Za-z0-9.-]+\.(?:or\.kr|co\.kr|go\.kr|"
+                r"com|org|net|kr)(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?",
+                normalized_line,
+                re.IGNORECASE,
+            )
+
+            if url_match:
+                url = url_match.group(0).rstrip(".,;)")
+
+                if not url.lower().startswith(("http://", "https://")):
+                    url = f"https://{url}"
+
+                normalized_line = f"접수 홈페이지: {url}"
+            else:
+                normalized_line = re.split(
+                    r"\s+[·ㆍ]\s+",
+                    normalized_line.lstrip("*#|·ㆍ "),
+                    maxsplit=1,
+                )[0].strip()
+
+        deduplication_key = re.sub(
+            r"[^0-9A-Za-z가-힣]",
+            "",
+            normalized_line,
+        ).lower()
+
+        if any(
+            saved_type == matched_type
+            and SequenceMatcher(
+                None,
+                saved_key,
+                deduplication_key,
+            ).ratio() >= 0.78
+            for saved_type, saved_key in seen
+        ):
+            continue
+
+        if type_counts.get(matched_type, 0) >= type_limits.get(
+            matched_type,
+            1,
+        ):
+            continue
+
+        seen.append(
+            (
+                matched_type,
+                deduplication_key,
+            )
+        )
+        type_counts[matched_type] = (
+            type_counts.get(matched_type, 0) + 1
+        )
 
         is_sensitive = (
             matched_type == "sensitive"
@@ -1006,6 +1222,9 @@ def extract_important_memos(text: str) -> list[dict]:
                 "source_text": line,
             }
         )
+
+        if len(memos) >= 4:
+            break
 
     return memos
 
@@ -1144,6 +1363,35 @@ async def analyze_schedule(
                 lang="kor+eng",
                 config="--oem 3 --psm 6",
             )
+
+            width, height = processed_image.size
+
+            if height >= width * 1.15:
+                left_image = processed_image.crop(
+                    (0, 0, max(1, int(width * 0.65)), height)
+                )
+                scale = min(
+                    1.5,
+                    2400 / max(left_image.size),
+                )
+
+                if abs(scale - 1) >= 0.05:
+                    left_image = left_image.resize(
+                        (
+                            max(1, int(left_image.width * scale)),
+                            max(1, int(left_image.height * scale)),
+                        ),
+                        Image.Resampling.LANCZOS,
+                    )
+
+                left_ocr_text = pytesseract.image_to_string(
+                    left_image,
+                    lang="kor+eng",
+                    config="--oem 3 --psm 6",
+                )
+
+                if left_ocr_text.strip():
+                    ocr_text = f"{ocr_text}\n{left_ocr_text}"
 
     except Image.DecompressionBombError as error:
         raise HTTPException(
