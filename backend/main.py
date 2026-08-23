@@ -2,6 +2,7 @@ from datetime import datetime
 from difflib import SequenceMatcher
 from io import BytesIO
 from pathlib import Path
+import asyncio
 import os
 import re
 
@@ -21,6 +22,7 @@ from PIL import (
     UnidentifiedImageError,
 )
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 
 def normalize_korean_date_text(text: str) -> str:
@@ -91,6 +93,7 @@ FRONTEND_DIR = PROJECT_DIR / "frontend"
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
+OCR_SEMAPHORE = asyncio.Semaphore(1)
 
 
 class TextAnalyzeRequest(BaseModel):
@@ -1294,7 +1297,7 @@ def build_analysis_response(
 
 
 @app.get("/health")
-def health_check():
+async def health_check():
     return {
         "message": "AI 일정 도우미 서버가 정상 작동 중입니다."
     }
@@ -1331,6 +1334,8 @@ async def analyze_schedule(
             detail="이미지 크기는 10MB 이하여야 합니다.",
         )
 
+    await OCR_SEMAPHORE.acquire()
+
     try:
         with Image.open(BytesIO(image_bytes)) as uploaded_image:
             if uploaded_image.format not in {"PNG", "JPEG"}:
@@ -1358,7 +1363,8 @@ async def analyze_schedule(
                 processed_image
             ).enhance(1.5)
 
-            ocr_text = pytesseract.image_to_string(
+            ocr_text = await run_in_threadpool(
+                pytesseract.image_to_string,
                 processed_image,
                 lang="kor+eng",
                 config="--oem 3 --psm 6",
@@ -1384,7 +1390,8 @@ async def analyze_schedule(
                         Image.Resampling.LANCZOS,
                     )
 
-                left_ocr_text = pytesseract.image_to_string(
+                left_ocr_text = await run_in_threadpool(
+                    pytesseract.image_to_string,
                     left_image,
                     lang="kor+eng",
                     config="--oem 3 --psm 6",
@@ -1416,6 +1423,9 @@ async def analyze_schedule(
             status_code=500,
             detail=f"OCR 처리 오류: {error}",
         ) from error
+
+    finally:
+        OCR_SEMAPHORE.release()
 
     ocr_text = clean_text(ocr_text)
 

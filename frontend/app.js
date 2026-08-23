@@ -4,6 +4,25 @@ const API_BASE_URL =
     : window.location.origin;
 
 
+async function readJsonResponse(response) {
+  const responseText = await response.text();
+
+  if (!responseText) {
+    throw new Error(
+      "분석 서버가 일시적으로 응답하지 않았습니다. 잠시 후 다시 시도해 주세요."
+    );
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    throw new Error(
+      "분석 서버 응답을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요."
+    );
+  }
+}
+
+
 
 const imageInput = document.getElementById(
   "imageInput"
@@ -1461,7 +1480,7 @@ analyzeButton.addEventListener("click", async () => {
       }
     );
 
-    const result = await response.json();
+    const result = await readJsonResponse(response);
 
     if (!response.ok) {
       throw new Error(
@@ -1530,7 +1549,7 @@ analyzeTextButton?.addEventListener(
         }
       );
 
-      const result = await response.json();
+      const result = await readJsonResponse(response);
 
       if (!response.ok) {
         throw new Error(
