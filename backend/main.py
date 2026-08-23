@@ -135,7 +135,7 @@ def extract_event_title(text: str) -> str:
             flags=re.IGNORECASE,
         )
 
-        if re.search(r"\bICT\s*융합", text, re.IGNORECASE):
+        if re.search(r"\bICT\b", text, re.IGNORECASE):
             title = re.sub(
                 r"(전국\s+)ICTS?\s*공모전",
                 r"\1ICT 융합 공모전",
@@ -1146,6 +1146,12 @@ def extract_important_memos(text: str) -> list[dict]:
                 normalized_line = "문의: " + " / ".join(contact_parts)
 
         if matched_type == "application":
+            normalized_line = re.sub(
+                r"\.(or|co|go)kr\b",
+                r".\1.kr",
+                normalized_line,
+                flags=re.IGNORECASE,
+            )
             url_match = re.search(
                 r"(?:https?://)?(?:www\.)?"
                 r"[A-Za-z0-9.-]+\.(?:or\.kr|co\.kr|go\.kr|"
@@ -1363,42 +1369,63 @@ async def analyze_schedule(
                 processed_image
             ).enhance(1.5)
 
+            width, height = processed_image.size
+            ocr_image = processed_image
+
+            if height >= width * 1.15:
+                top_image = processed_image.crop(
+                    (
+                        0,
+                        0,
+                        max(1, int(width * 0.62)),
+                        int(height * 0.46),
+                    )
+                )
+                timeline_image = processed_image.crop(
+                    (
+                        0,
+                        int(height * 0.65),
+                        max(1, int(width * 0.65)),
+                        int(height * 0.84),
+                    )
+                )
+                timeline_image = timeline_image.resize(
+                    (
+                        max(1, int(timeline_image.width * 1.5)),
+                        max(1, int(timeline_image.height * 1.5)),
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+                bottom_image = processed_image.crop(
+                    (0, int(height * 0.82), width, height)
+                )
+                regions = [
+                    top_image,
+                    timeline_image,
+                    bottom_image,
+                ]
+                spacer = 24
+                ocr_image = Image.new(
+                    "L",
+                    (
+                        max(region.width for region in regions),
+                        sum(region.height for region in regions)
+                        + spacer * (len(regions) - 1),
+                    ),
+                    255,
+                )
+                offset_y = 0
+
+                for region in regions:
+                    ocr_image.paste(region, (0, offset_y))
+                    offset_y += region.height + spacer
+
             ocr_text = await run_in_threadpool(
                 pytesseract.image_to_string,
-                processed_image,
+                ocr_image,
                 lang="kor+eng",
                 config="--oem 3 --psm 6",
             )
-
-            width, height = processed_image.size
-
-            if height >= width * 1.15:
-                left_image = processed_image.crop(
-                    (0, 0, max(1, int(width * 0.65)), height)
-                )
-                scale = min(
-                    1.5,
-                    2400 / max(left_image.size),
-                )
-
-                if abs(scale - 1) >= 0.05:
-                    left_image = left_image.resize(
-                        (
-                            max(1, int(left_image.width * scale)),
-                            max(1, int(left_image.height * scale)),
-                        ),
-                        Image.Resampling.LANCZOS,
-                    )
-
-                left_ocr_text = await run_in_threadpool(
-                    pytesseract.image_to_string,
-                    left_image,
-                    lang="kor+eng",
-                    config="--oem 3 --psm 6",
-                )
-
-                if left_ocr_text.strip():
-                    ocr_text = f"{ocr_text}\n{left_ocr_text}"
 
     except Image.DecompressionBombError as error:
         raise HTTPException(
