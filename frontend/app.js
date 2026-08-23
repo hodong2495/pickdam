@@ -8,6 +8,7 @@ const API_BASE_URL =
 const imageInput = document.getElementById(
   "imageInput"
 );
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const fileSelectButton = document.getElementById(
   "fileSelectButton"
 );
@@ -1170,6 +1171,17 @@ function updateImagePreview() {
     return;
   }
 
+  if (imageFile.size > MAX_IMAGE_BYTES) {
+    imageInput.value = "";
+    uploadPlaceholder.hidden = false;
+    imagePreviewBox.hidden = true;
+
+    statusMessage.textContent =
+      "이미지 크기는 10MB 이하여야 합니다.";
+
+    return;
+  }
+
   if (previewObjectUrl) {
     URL.revokeObjectURL(previewObjectUrl);
   }
@@ -1419,6 +1431,12 @@ analyzeButton.addEventListener("click", async () => {
   if (!imageFile) {
     statusMessage.textContent =
       "먼저 안내문 이미지를 선택해 주세요.";
+    return;
+  }
+
+  if (imageFile.size > MAX_IMAGE_BYTES) {
+    statusMessage.textContent =
+      "이미지 크기는 10MB 이하여야 합니다.";
     return;
   }
 

@@ -88,6 +88,9 @@ PROJECT_DIR = BASE_DIR.parent
 
 FRONTEND_DIR = PROJECT_DIR / "frontend"
 
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_IMAGE_PIXELS = 20_000_000
+
 
 class TextAnalyzeRequest(BaseModel):
     text: str
@@ -1095,7 +1098,7 @@ async def analyze_schedule(
             detail="PNG 또는 JPG 이미지만 업로드할 수 있습니다.",
         )
 
-    image_bytes = await image.read()
+    image_bytes = await image.read(MAX_IMAGE_BYTES + 1)
 
     if not image_bytes:
         raise HTTPException(
@@ -1103,8 +1106,28 @@ async def analyze_schedule(
             detail="비어 있는 이미지입니다.",
         )
 
+    if len(image_bytes) > MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="이미지 크기는 10MB 이하여야 합니다.",
+        )
+
     try:
         with Image.open(BytesIO(image_bytes)) as uploaded_image:
+            if uploaded_image.format not in {"PNG", "JPEG"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail="실제 PNG 또는 JPG 이미지 파일만 업로드할 수 있습니다.",
+                )
+
+            width, height = uploaded_image.size
+
+            if width * height > MAX_IMAGE_PIXELS:
+                raise HTTPException(
+                    status_code=413,
+                    detail="이미지 해상도는 2천만 픽셀 이하여야 합니다.",
+                )
+
             processed_image = ImageOps.exif_transpose(
                 uploaded_image
             )
@@ -1121,6 +1144,12 @@ async def analyze_schedule(
                 lang="kor+eng",
                 config="--oem 3 --psm 6",
             )
+
+    except Image.DecompressionBombError as error:
+        raise HTTPException(
+            status_code=413,
+            detail="이미지 해상도가 너무 큽니다.",
+        ) from error
 
     except UnidentifiedImageError as error:
         raise HTTPException(
