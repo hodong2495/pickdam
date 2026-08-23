@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+
+backend/schedules.db
+backend/google_client_secret.json
+backend/google_token.json
+
+.env

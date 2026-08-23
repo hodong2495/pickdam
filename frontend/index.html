@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
+
+  <meta
+    name="description"
+    content="안내문 이미지에서 일정 정보를 찾아 캘린더에 저장하는 AI 일정 도우미"
+  >
+
+  <title>AI 일정 도우미</title>
+
+<link rel="stylesheet" href="/style.css?v=18">
+
+</head>
+
+<body>
+  <div class="mobile-app-shell">
+  <header class="mobile-app-header">
+    <div class="mobile-brand">
+      <span class="mobile-brand-icon" aria-hidden="true">✓</span>
+
+      <span>
+        <strong>AI 일정 도우미</strong>
+        <small id="currentPageLabel">정보 분석</small>
+      </span>
+    </div>
+
+    <span class="mobile-safe-badge">
+      원본 미저장
+    </span>
+  </header>
+</div>
+
+  <div class="background-decoration decoration-one"></div>
+  <div class="background-decoration decoration-two"></div>
+  <div class="background-decoration decoration-three"></div>
+
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="AI 일정 도우미 홈">
+      <span class="brand-icon" aria-hidden="true">✓</span>
+
+      <span class="brand-text">
+        <strong>AI 일정 도우미</strong>
+        <small>안내문 속 일정을 한 번에</small>
+      </span>
+    </a>
+
+    <span class="privacy-badge">
+      <span aria-hidden="true">●</span>
+      원본 이미지는 저장하지 않아요
+    </span>
+  </header>
+
+<main
+  id="top"
+  class="app-page active"
+  data-page="analyze"
+>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">
+          문자 · 공공 안내문 · 공고 이미지
+        </p>
+
+        <h1>
+          중요한 일정을<br>
+          <span>놓치지 않도록</span><br>
+          한 번에 정리하세요.
+        </h1>
+
+        <p class="hero-description">
+          안내문 이미지를 올리면 제목, 날짜, 시간, 장소를 찾아
+          확인하기 쉬운 일정으로 정리해 드립니다.
+          확인한 일정은 캘린더 파일로 받을 수 있습니다.
+        </p>
+
+        <div class="feature-summary" aria-label="주요 특징">
+          <article>
+            <strong>빠른 인식</strong>
+            <span>이미지에서 일정 추출</span>
+          </article>
+
+          <article>
+            <strong>직접 확인</strong>
+            <span>저장 전 수정 가능</span>
+          </article>
+
+          <article>
+            <strong>캘린더 연결</strong>
+            <span>ICS 파일로 간편 저장</span>
+          </article>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-hidden="true">
+        <div class="floating-card floating-card-top">
+          <span class="floating-icon">✓</span>
+
+          <div>
+            <strong>일정 인식 완료</strong>
+            <small>날짜와 장소를 찾았어요</small>
+          </div>
+        </div>
+
+        <div class="phone-mockup">
+          <div class="phone-speaker"></div>
+
+          <div class="phone-screen">
+            <div class="mockup-header">
+              <span class="mockup-logo">AI</span>
+              <strong>일정 분석</strong>
+              <span class="mockup-status">준비됨</span>
+            </div>
+
+            <div class="mockup-upload">
+              <span>▣</span>
+              <strong>안내문을 올려주세요</strong>
+              <small>문자 · 공고 · 예약 안내</small>
+            </div>
+
+            <p class="mockup-caption">찾은 일정</p>
+
+            <div class="mockup-schedule">
+              <span class="mockup-date">
+                <strong>19</strong>
+                <small>8월</small>
+              </span>
+
+              <span>
+                <strong>창업 필수교육</strong>
+                <small>오후 1:30 · 세미나실</small>
+              </span>
+            </div>
+
+            <div class="mockup-schedule">
+              <span class="mockup-date purple">
+                <strong>15</strong>
+                <small>9월</small>
+              </span>
+
+              <span>
+                <strong>공모전 접수 마감</strong>
+                <small>오후 6:00 · 온라인</small>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="floating-card floating-card-bottom">
+          <span class="floating-icon calendar">＋</span>
+
+          <div>
+            <strong>캘린더에 저장</strong>
+            <small>중요한 일정을 잊지 않게</small>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="workflow" aria-label="사용 순서">
+      <article>
+        <span class="step-number">1</span>
+
+        <div>
+          <strong>이미지 올리기</strong>
+          <small>안내문 또는 캡처 이미지</small>
+        </div>
+      </article>
+
+      <span class="step-arrow" aria-hidden="true">→</span>
+
+      <article>
+        <span class="step-number">2</span>
+
+        <div>
+          <strong>일정 확인하기</strong>
+          <small>날짜와 장소를 직접 검토</small>
+        </div>
+      </article>
+
+      <span class="step-arrow" aria-hidden="true">→</span>
+
+      <article>
+        <span class="step-number">3</span>
+
+        <div>
+          <strong>캘린더에 저장</strong>
+          <small>ICS 파일로 간편하게</small>
+        </div>
+      </article>
+    </section>
+
+    <section class="service-section">
+      <div class="section-heading">
+        <p class="eyebrow">간편한 일정 등록</p>
+        <h2>안내문 한 장으로 시작하세요</h2>
+
+        <p>
+          분석 결과는 자동 저장되지 않습니다.
+          원문과 추출 정보를 직접 확인한 뒤 저장해 주세요.
+        </p>
+      </div>
+
+      <div class="workspace">
+        <section class="card upload-card">
+          <div class="card-heading">
+            <span class="section-icon" aria-hidden="true">1</span>
+
+            <div>
+              <h2>안내문 이미지 올리기</h2>
+              <p>휴대폰 사진이나 화면 캡처를 선택하세요.</p>
+            </div>
+          </div>
+
+<div
+  class="analysis-input-tabs"
+  role="tablist"
+  aria-label="분석할 자료 선택"
+>
+  <button
+    type="button"
+    id="imageInputTab"
+    class="analysis-input-tab active"
+    role="tab"
+    aria-selected="true"
+    aria-controls="imageInputPanel"
+  >
+    이미지
+  </button>
+
+  <button
+    type="button"
+    id="textInputTab"
+    class="analysis-input-tab"
+    role="tab"
+    aria-selected="false"
+    aria-controls="textInputPanel"
+  >
+    텍스트
+  </button>
+</div>
+
+<div
+  id="imageInputPanel"
+  class="analysis-input-panel"
+  role="tabpanel"
+  aria-labelledby="imageInputTab"
+>
+  <div class="upload-zone" id="uploadZone">
+  <input
+    type="file"
+    id="imageInput"
+    accept="image/png, image/jpeg, image/jpg"
+  >
+
+
+  <div
+    id="uploadPlaceholder"
+    class="upload-placeholder"
+  >
+    <span class="upload-icon" aria-hidden="true">↥</span>
+
+    <strong>이미지를 선택해 주세요</strong>
+
+    <span>
+      PNG 또는 JPG 형식의 안내문 이미지를 선택하세요.
+    </span>
+
+    <button
+      type="button"
+      id="fileSelectButton"
+      class="upload-button-look"
+    >
+      파일 선택
+    </button>
+  </div>
+
+  <div
+    id="imagePreviewBox"
+    class="image-preview-box"
+    hidden
+  >
+    <img
+      id="imagePreview"
+      alt="선택한 안내문 이미지 미리보기"
+    >
+
+    <div class="selected-file-information">
+      <strong id="selectedFileName"></strong>
+      <span id="selectedFileSize"></span>
+
+      <button
+        type="button"
+        id="changeImageButton"
+        class="change-image-button"
+      >
+        다른 이미지 선택
+      </button>
+    </div>
+  </div>
+</div>
+
+<button
+  type="button"
+  id="analyzeButton"
+  class="primary-button"
+>
+  <span aria-hidden="true">✦</span>
+  일정 분석하기
+</button>
+
+</div>
+
+<div
+  id="textInputPanel"
+  class="analysis-input-panel"
+  role="tabpanel"
+  aria-labelledby="textInputTab"
+  hidden
+>
+  <label
+    for="textAnalysisInput"
+    class="text-analysis-label"
+  >
+    안내문 텍스트 붙여넣기
+  </label>
+
+  <textarea
+    id="textAnalysisInput"
+    class="text-analysis-input"
+    rows="10"
+    placeholder="문자, 공지사항 또는 안내문 내용을 붙여 넣어 주세요."
+  ></textarea>
+
+  <div class="text-analysis-options">
+    <label for="referenceYearInput">
+      기준 연도
+    </label>
+
+    <input
+      type="number"
+      id="referenceYearInput"
+      min="2000"
+      max="2099"
+      inputmode="numeric"
+      placeholder="예: 2026"
+    >
+  </div>
+
+  <p class="input-help-text">
+    본문에 연도가 없을 때만 기준 연도를 사용합니다.
+  </p>
+
+  <button
+    type="button"
+    id="analyzeTextButton"
+    class="primary-button analyze-button"
+  >
+    ✦ 텍스트 분석하기
+  </button>
+</div>
+
+
+  <p class="candidate-help">
+    날짜가 정확하지 않거나 OCR 경고가 있는 일정은
+    원본 이미지와 비교하여 수정해 주세요.
+  </p>
+</section>
+
+<section
+  id="candidateSection"
+  class="card candidate-section"
+  hidden
+>
+  <div class="card-heading">
+    <span class="section-icon" aria-hidden="true">2</span>
+
+    <div>
+      <h2>찾은 일정 후보</h2>
+
+      <p>
+        일정을 선택하면 아래에서 내용을 확인하고
+        수정할 수 있습니다.
+      </p>
+    </div>
+  </div>
+
+  <div
+    id="candidateList"
+    class="candidate-list"
+  ></div>
+
+  <p class="candidate-help">
+    OCR 결과는 이미지 품질에 따라 달라질 수 있습니다.
+    저장하기 전에 원본 이미지와 날짜를 비교해 주세요.
+  </p>
+</section>
+
+<section
+  id="memoCandidateSection"
+  class="card memo-candidate-section"
+  hidden
+>
+  <div class="section-title-row">
+    <div class="step-number">M</div>
+
+    <div>
+      <h2>찾은 중요 메모</h2>
+      <p>
+        일정과 함께 보관할 준비물, 문의처,
+        신청 링크 등을 확인하세요.
+      </p>
+    </div>
+  </div>
+
+  <div
+    id="memoCandidateList"
+    class="memo-candidate-list"
+  ></div>
+
+  <p class="candidate-helper-text">
+    민감정보 표시가 있는 항목은 저장 전에 원문을
+    반드시 확인해 주세요.
+  </p>
+</section>
+
+
+        <section class="card result-card">
+          <div class="card-heading">
+            <span class="section-icon" aria-hidden="true">3</span>
+
+            <div>
+              <h2>추출 결과 확인하기</h2>
+              <p>잘못 인식된 내용은 직접 수정할 수 있습니다.</p>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field field-full">
+              <label for="title">일정 제목</label>
+              <input
+                type="text"
+                id="title"
+                placeholder="인식된 일정 제목이 표시됩니다."
+              >
+            </div>
+
+            <div class="field">
+              <label for="startTime">시작 날짜 및 시간</label>
+              <input type="datetime-local" id="startTime">
+            </div>
+
+            <div class="field">
+              <label for="endTime">종료 날짜 및 시간</label>
+              <input type="datetime-local" id="endTime">
+            </div>
+
+            <div class="field field-full">
+              <label for="location">장소</label>
+              <input
+                type="text"
+                id="location"
+                placeholder="장소가 없으면 ‘장소 없음’이라고 입력하세요."
+              >
+            </div>
+
+            <div class="field field-full">
+              <label for="memo">메모</label>
+
+              <textarea
+                id="memo"
+                rows="6"
+                placeholder="일정에 함께 저장할 안내 내용입니다."
+              ></textarea>
+            </div>
+
+            <details class="ocr-details field-full">
+              <summary>
+                이미지에서 인식한 전체 글자 확인
+              </summary>
+<!---->
+              <label class="screen-reader-only" for="ocrText">
+                이미지에서 인식한 전체 글자
+              </label>
+<!---->
+              <textarea
+                id="ocrText"
+                rows="10"
+                readonly
+                placeholder="OCR로 인식한 글자가 여기에 표시됩니다."
+              ></textarea>
+            
+</details>
+
+
+
+            <div class="field field-full">
+              <label for="reminder">알림 시점</label>
+
+              <select id="reminder">
+                <option value="10080">7일 전</option>
+                <option value="4320">3일 전</option>
+                <option value="1440">1일 전</option>
+                <option value="60">1시간 전</option>
+              </select>
+            </div>
+          </div>
+
+          <div
+            id="warningBox"
+            class="warning-box"
+            hidden
+          ></div>
+
+          <label class="confirmation">
+            <input type="checkbox" id="confirmationCheck">
+
+            <span>
+              이미지 원문과 추출된 일정 정보를 직접 확인했습니다.
+            </span>
+          </label>
+
+          <button
+            type="button"
+            id="saveButton"
+            class="primary-button"
+          >
+            <span aria-hidden="true">✓</span>
+            일정 저장하기
+          </button>
+        </section>
+      </div>
+
+      <p
+        id="statusMessage"
+        role="status"
+        aria-live="polite"
+      ></p>
+
+      <section class="card saved-card">
+        <div class="schedule-list-header">
+          <div class="card-heading">
+            <span class="section-icon" aria-hidden="true">4</span>
+
+            <div>
+              <h2>저장된 일정</h2>
+              <p>확인한 일정을 캘린더 파일로 받을 수 있습니다.</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            id="refreshButton"
+            class="small-button secondary-button"
+          >
+            목록 새로고침
+          </button>
+        </div>
+
+        <div id="scheduleList">
+          저장된 일정을 불러오는 중입니다.
+        </div>
+      </section>
+    </section>
+  </main>
+
+<section
+  id="memoPage"
+  class="app-page memo-page"
+  data-page="memo"
+  hidden
+>
+  <div class="mobile-page-heading memo-page-heading">
+    <p class="eyebrow">내 메모</p>
+    <h1>중요한 내용을<br>간편하게 보관하세요.</h1>
+    <p>
+      준비물, 문의처, 신청 링크와 같은 내용을
+      저장하고 검색할 수 있습니다.
+    </p>
+  </div>
+
+  <section class="card memo-editor-card">
+    <div class="section-title-row">
+      <div class="step-number">+</div>
+
+      <div>
+        <h2 id="memoEditorHeading">새 메모 작성</h2>
+        <p>제목과 내용을 입력해 저장하세요.</p>
+      </div>
+    </div>
+
+    <input
+      type="hidden"
+      id="editingMemoId"
+    >
+
+    <label for="memoTitleInput">
+      메모 제목
+    </label>
+
+    <input
+      type="text"
+      id="memoTitleInput"
+      placeholder="예: 건강검진 준비물"
+      maxlength="100"
+    >
+
+    <label for="memoContentInput">
+      메모 내용
+    </label>
+
+    <textarea
+      id="memoContentInput"
+      rows="6"
+      placeholder="보관할 내용을 입력하세요."
+    ></textarea>
+
+    <label for="memoTypeInput">
+      분류
+    </label>
+
+    <select id="memoTypeInput">
+      <option value="general">일반</option>
+      <option value="preparation">준비물</option>
+      <option value="application">신청 및 접수</option>
+      <option value="contact">문의처</option>
+      <option value="account">계정 정보</option>
+      <option value="payment">결제 및 입금</option>
+      <option value="visit">방문 안내</option>
+      <option value="sensitive">민감정보</option>
+    </select>
+
+    <div class="memo-option-row">
+      <label class="memo-check-option">
+        <input
+          type="checkbox"
+          id="memoPinnedInput"
+        >
+        <span>상단에 고정</span>
+      </label>
+
+      <label class="memo-check-option">
+        <input
+          type="checkbox"
+          id="memoSensitiveInput"
+        >
+        <span>민감정보 포함</span>
+      </label>
+    </div>
+
+    <p
+      id="memoEditorStatus"
+      class="memo-editor-status"
+      aria-live="polite"
+    ></p>
+
+    <div class="memo-editor-actions">
+      <button
+        type="button"
+        id="cancelMemoEditButton"
+        class="secondary-button"
+        hidden
+      >
+        수정 취소
+      </button>
+
+      <button
+        type="button"
+        id="saveMemoButton"
+        class="primary-button"
+      >
+        메모 저장하기
+      </button>
+    </div>
+  </section>
+
+  <section class="card memo-list-card">
+    <div class="memo-list-heading">
+      <div>
+        <p class="eyebrow">저장된 메모</p>
+        <h2>내 메모 목록</h2>
+      </div>
+
+      <span
+        id="memoCountBadge"
+        class="selected-date-count"
+      >
+        0개
+      </span>
+    </div>
+
+    <label
+      for="memoSearchInput"
+      class="visually-hidden"
+    >
+      메모 검색
+    </label>
+
+    <div class="memo-search-row">
+      <input
+        type="search"
+        id="memoSearchInput"
+        placeholder="제목 또는 내용 검색"
+      >
+
+      <button
+        type="button"
+        id="memoSearchButton"
+      >
+        검색
+      </button>
+    </div>
+
+    <button
+      type="button"
+      id="clearMemoSearchButton"
+      class="clear-memo-search-button"
+      hidden
+    >
+      검색 초기화
+    </button>
+
+    <div id="memoList">
+      <p class="empty-message">
+        저장된 메모를 불러오는 중입니다.
+      </p>
+    </div>
+  </section>
+</section>
+
+
+<section
+  id="calendarPage"
+  class="app-page mobile-placeholder-page calendar-page"
+  data-page="calendar"
+  hidden
+>
+  <div class="mobile-page-heading calendar-page-heading">
+    <p class="eyebrow">내 캘린더</p>
+    <h1>저장한 일정을<br>한눈에 확인하세요.</h1>
+    <p>
+      날짜를 누르면 해당 날짜에 저장된 일정을
+      아래에서 확인할 수 있습니다.
+    </p>
+  </div>
+
+  <section class="card calendar-card">
+    <div class="calendar-toolbar">
+      <button
+        type="button"
+        id="previousMonthButton"
+        class="calendar-month-button"
+        aria-label="이전 달"
+      >
+        ‹
+      </button>
+
+      <h2 id="calendarMonthLabel">
+        달력 불러오는 중
+      </h2>
+
+      <button
+        type="button"
+        id="nextMonthButton"
+        class="calendar-month-button"
+        aria-label="다음 달"
+      >
+        ›
+      </button>
+    </div>
+
+    <div class="calendar-weekdays" aria-hidden="true">
+      <span class="sunday">일</span>
+      <span>월</span>
+      <span>화</span>
+      <span>수</span>
+      <span>목</span>
+      <span>금</span>
+      <span class="saturday">토</span>
+    </div>
+
+    <div
+      id="calendarGrid"
+      class="calendar-grid"
+      aria-label="월간 달력"
+    ></div>
+
+    <button
+      type="button"
+      id="todayButton"
+      class="calendar-today-button"
+    >
+      오늘로 이동
+    </button>
+  </section>
+
+  <section class="card selected-date-card">
+    <div class="selected-date-heading">
+      <div>
+        <p class="eyebrow">선택한 날짜</p>
+        <h2 id="selectedDateLabel">
+          날짜를 선택해 주세요
+        </h2>
+      </div>
+
+      <span
+        id="selectedDateCount"
+        class="selected-date-count"
+      >
+        0개
+      </span>
+    </div>
+
+    <div id="calendarScheduleList">
+      <p class="empty-message">
+        날짜를 선택하면 저장된 일정이 표시됩니다.
+      </p>
+    </div>
+  </section>
+</section>
+
+
+  <footer class="site-footer">
+    <strong>AI 일정 도우미</strong>
+
+    <p>
+      OCR 결과는 이미지 품질에 따라 다를 수 있으므로
+      저장하기 전에 반드시 원문을 확인해 주세요.
+    </p>
+  </footer>
+
+
+<nav
+  class="mobile-bottom-navigation"
+  aria-label="주요 화면"
+>
+  <button
+    type="button"
+    class="mobile-nav-button"
+    data-target-page="memo"
+    aria-label="메모 화면"
+  >
+    <span aria-hidden="true">📝</span>
+    <strong>메모</strong>
+  </button>
+
+  <button
+    type="button"
+    class="mobile-nav-button active"
+    data-target-page="analyze"
+    aria-label="정보 분석 화면"
+    aria-current="page"
+  >
+    <span aria-hidden="true">✦</span>
+    <strong>분석</strong>
+  </button>
+
+  <button
+    type="button"
+    class="mobile-nav-button"
+    data-target-page="calendar"
+    aria-label="캘린더 화면"
+  >
+    <span aria-hidden="true">📅</span>
+    <strong>캘린더</strong>
+  </button>
+</nav>
+
+
+<script src="/app.js?v=23"></script>
+</body>
+</html>
