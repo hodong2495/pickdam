@@ -135,6 +135,16 @@ def extract_event_title(text: str) -> str:
             flags=re.IGNORECASE,
         )
 
+        # 포스터의 큰 장식 글자 "ICT 융합"이 CTSA, ICTS처럼
+        # 합쳐져 인식되더라도 공모전 제목 안에서만 원래 표현으로 복원합니다.
+        title = re.sub(
+            r"(전국\s+)(?:CTSA|ICTS?)(?:\s*융합)?\s*(공모전)",
+            r"\1ICT 융합 \2",
+            title,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+
         if re.search(r"\bICT\b", text, re.IGNORECASE):
             title = re.sub(
                 r"(전국\s+)ICTS?\s*공모전",
