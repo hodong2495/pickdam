@@ -66,6 +66,13 @@ const warningBox = document.getElementById("warningBox");
 const confirmationCheck = document.getElementById(
   "confirmationCheck"
 );
+const allDayCheck = document.getElementById("allDayCheck");
+const startTimeLabel = document.getElementById(
+  "startTimeLabel"
+);
+const endTimeLabel = document.getElementById(
+  "endTimeLabel"
+);
 const scheduleList = document.getElementById("scheduleList");
 const reminder = document.getElementById("reminder");
 const calendarMonthLabel = document.getElementById(
@@ -420,6 +427,66 @@ const fields = {
   ocrText: document.getElementById("ocrText"),
 };
 
+function formatDateOnly(value) {
+  const dateText = String(value || "").slice(0, 10);
+  const match = dateText.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return value || "미입력";
+  }
+
+  return `${match[1]}. ${Number(match[2])}. ${Number(match[3])}.`;
+}
+
+function setAllDayMode(isAllDay, preserveValues = true) {
+  const startValue = fields.startTime.value;
+  const endValue = fields.endTime.value;
+
+  selectedScheduleAllDay = Boolean(isAllDay);
+  allDayCheck.checked = selectedScheduleAllDay;
+  fields.startTime.type = selectedScheduleAllDay
+    ? "date"
+    : "datetime-local";
+  fields.endTime.type = selectedScheduleAllDay
+    ? "date"
+    : "datetime-local";
+  startTimeLabel.textContent = selectedScheduleAllDay
+    ? "시작 날짜 (종일)"
+    : "시작 날짜 및 시간";
+  endTimeLabel.textContent = selectedScheduleAllDay
+    ? "종료 날짜 (선택)"
+    : "종료 날짜 및 시간";
+
+  if (!preserveValues) {
+    return;
+  }
+
+  fields.startTime.value = selectedScheduleAllDay
+    ? startValue.slice(0, 10)
+    : startValue && !startValue.includes("T")
+      ? `${startValue}T00:00`
+      : startValue;
+  fields.endTime.value = selectedScheduleAllDay
+    ? endValue.slice(0, 10)
+    : endValue && !endValue.includes("T")
+      ? `${endValue}T00:00`
+      : endValue;
+}
+
+function setCandidateDateValues(candidate) {
+  setAllDayMode(Boolean(candidate.all_day), false);
+  fields.startTime.value = candidate.all_day
+    ? String(candidate.start_time || "").slice(0, 10)
+    : candidate.start_time ?? "";
+  fields.endTime.value = candidate.all_day
+    ? String(candidate.end_time || "").slice(0, 10)
+    : candidate.end_time ?? "";
+}
+
+allDayCheck?.addEventListener("change", () => {
+  setAllDayMode(allDayCheck.checked);
+});
+
 function clearValidation() {
   fields.title.classList.remove("invalid");
   fields.startTime.classList.remove("invalid");
@@ -576,17 +643,23 @@ function renderSchedules(schedules) {
 
     article.appendChild(
       createTextRow(
-        "시작",
-        formatDateTime(schedule.start_time)
+        schedule.all_day ? "일정" : "시작",
+        schedule.all_day
+          ? `${formatDateOnly(schedule.start_time)} · 종일`
+          : formatDateTime(schedule.start_time)
       )
     );
 
-    article.appendChild(
-      createTextRow(
-        "종료",
-        formatDateTime(schedule.end_time)
-      )
-    );
+    if (!schedule.all_day || schedule.end_time) {
+      article.appendChild(
+        createTextRow(
+          schedule.all_day ? "종료 날짜" : "종료",
+          schedule.all_day
+            ? formatDateOnly(schedule.end_time)
+            : formatDateTime(schedule.end_time)
+        )
+      );
+    }
 
     article.appendChild(
       createTextRow(
@@ -683,20 +756,11 @@ function selectCandidate(index) {
 
   selectedCandidateIndex = index;
 
-  selectedScheduleAllDay = Boolean(
-    scheduleCandidates[index]?.all_day
-  );
-
   fields.title.value = candidate.title ?? "";
-  fields.startTime.value =
-    candidate.start_time ?? "";
-  fields.endTime.value =
-    candidate.end_time ?? "";
+  setCandidateDateValues(candidate);
   fields.location.value =
     candidate.location || "장소 없음";
   fields.memo.value = candidate.memo ?? "";
-
-  selectedScheduleAllDay = Boolean(candidate.all_day);
 
   confirmationCheck.checked = false;
   clearValidation();
@@ -786,13 +850,9 @@ function renderScheduleCandidates(candidates) {
     const meta = document.createElement("span");
     meta.className = "candidate-meta";
 
-    const dateText = formatDateTime(
-      candidate.start_time
-    );
-
     meta.textContent = candidate.all_day
-      ? `${dateText} · 종일 일정`
-      : dateText;
+      ? `${formatDateOnly(candidate.start_time)} · 종일 일정`
+      : formatDateTime(candidate.start_time);
 
     const badges =
       document.createElement("span");
@@ -963,9 +1023,9 @@ function renderSelectedDateSchedules() {
 
       const time = document.createElement("span");
       time.className = "calendar-schedule-time";
-      time.textContent = formatCalendarTime(
-        schedule.start_time
-      );
+      time.textContent = schedule.all_day
+        ? "종일"
+        : formatCalendarTime(schedule.start_time);
 
       const title = document.createElement("h3");
       title.textContent = schedule.title;
@@ -1414,17 +1474,10 @@ function applyAnalysisResult(result, sourceLabel) {
     scheduleCandidates = returnedCandidates;
     selectedCandidateIndex = 0;
 
-    selectedScheduleAllDay = Boolean(
-      scheduleCandidates[0]?.all_day
-    );
-
     const firstCandidate = returnedCandidates[0];
 
     fields.title.value = firstCandidate.title ?? "";
-    fields.startTime.value =
-      firstCandidate.start_time ?? "";
-    fields.endTime.value =
-      firstCandidate.end_time ?? "";
+    setCandidateDateValues(firstCandidate);
     fields.location.value =
       firstCandidate.location || "장소 없음";
     fields.memo.value = firstCandidate.memo ?? "";
@@ -1463,7 +1516,7 @@ analyzeButton.addEventListener("click", async () => {
   formData.append("image", imageFile);
 
   analyzeButton.disabled = true;
-  selectedScheduleAllDay = false;
+  setAllDayMode(false);
   confirmationCheck.checked = false;
   clearValidation();
   renderMemoCandidates([]);
@@ -1526,7 +1579,7 @@ analyzeTextButton?.addEventListener(
     };
 
     analyzeTextButton.disabled = true;
-    selectedScheduleAllDay = false;
+    setAllDayMode(false);
     confirmationCheck.checked = false;
     clearValidation();
     renderMemoCandidates([]);
@@ -1594,8 +1647,14 @@ saveButton.addEventListener("click", async () => {
 
   const scheduleData = {
     title: fields.title.value.trim(),
-    start_time: fields.startTime.value,
-    end_time: fields.endTime.value || null,
+    start_time: selectedScheduleAllDay
+      ? `${fields.startTime.value}T00:00`
+      : fields.startTime.value,
+    end_time: fields.endTime.value
+      ? selectedScheduleAllDay
+        ? `${fields.endTime.value}T00:00`
+        : fields.endTime.value
+      : null,
     location: fields.location.value.trim(),
     memo: fields.memo.value.trim(),
     reminder_minutes: Number(reminder.value),

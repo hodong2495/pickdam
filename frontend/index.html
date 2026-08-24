@@ -451,13 +451,27 @@
               >
             </div>
 
+            <div class="field field-full">
+              <label class="all-day-option">
+                <input type="checkbox" id="allDayCheck">
+                <span>종일 일정</span>
+              </label>
+              <small class="all-day-helper">
+                시간이 없는 일정은 날짜만 저장합니다.
+              </small>
+            </div>
+
             <div class="field">
-              <label for="startTime">시작 날짜 및 시간</label>
+              <label for="startTime" id="startTimeLabel">
+                시작 날짜 및 시간
+              </label>
               <input type="datetime-local" id="startTime">
             </div>
 
             <div class="field">
-              <label for="endTime">종료 날짜 및 시간</label>
+              <label for="endTime" id="endTimeLabel">
+                종료 날짜 및 시간
+              </label>
               <input type="datetime-local" id="endTime">
             </div>
 

@@ -875,6 +875,31 @@ input.invalid {
   line-height: 1.5;
 }
 
+.all-day-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+
+.all-day-option input {
+  width: 18px;
+  height: 18px;
+  min-height: auto;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.all-day-option span {
+  font-weight: 800;
+}
+
+.all-day-helper {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+}
+
 #statusMessage {
   min-height: 26px;
   margin: 24px 0;
