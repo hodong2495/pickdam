@@ -277,39 +277,6 @@ function addDaysToDate(value, days) {
 }
 
 
-function addHoursToDateTime(value, hours) {
-  const [datePart, timePart = "00:00"] =
-    String(value).split("T");
-  const [year, month, day] = datePart
-    .split("-")
-    .map(Number);
-  const [hour, minute] = timePart
-    .split(":")
-    .map(Number);
-
-  const date = new Date(
-    year,
-    month - 1,
-    day,
-    hour + hours,
-    minute
-  );
-
-  const nextDate = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-
-  const nextTime = [
-    String(date.getHours()).padStart(2, "0"),
-    String(date.getMinutes()).padStart(2, "0"),
-  ].join(":");
-
-  return `${nextDate}T${nextTime}`;
-}
-
-
 function downloadScheduleIcs(schedule) {
   const nowUtc = new Date()
     .toISOString()
@@ -345,17 +312,19 @@ function downloadScheduleIcs(schedule) {
       `DTEND;VALUE=DATE:${formatIcsDate(exclusiveEndDate)}`
     );
   } else {
-    const endTime = schedule.end_time ||
-      addHoursToDateTime(schedule.start_time, 1);
-
     lines.push(
       `DTSTART;TZID=Asia/Seoul:${formatIcsDateTime(
         schedule.start_time
-      )}`,
-      `DTEND;TZID=Asia/Seoul:${formatIcsDateTime(
-        endTime
       )}`
     );
+
+    if (schedule.end_time) {
+      lines.push(
+        `DTEND;TZID=Asia/Seoul:${formatIcsDateTime(
+          schedule.end_time
+        )}`
+      );
+    }
   }
 
   lines.push(
