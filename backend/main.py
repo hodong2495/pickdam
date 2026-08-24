@@ -114,15 +114,87 @@ def clean_text(text: str) -> str:
 
 
 def extract_event_title(text: str) -> str:
+    normalized_title_text = re.sub(
+        r"[경겸글]\s*[진전]\s*\[?\s*대(?:[외회되])?",
+        "경진대회",
+        text,
+    )
+
+    has_ax = bool(
+        re.search(
+            r"(?:\bAX\b|스\s*[×xX])",
+            normalized_title_text,
+            re.IGNORECASE,
+        )
+    )
+
+    if (
+        has_ax
+        and "경진대회" in normalized_title_text
+        and "도민" in normalized_title_text
+        and "체감" in normalized_title_text
+    ):
+        known_regions = (
+            "서울특별시",
+            "부산광역시",
+            "대구광역시",
+            "인천광역시",
+            "광주광역시",
+            "대전광역시",
+            "울산광역시",
+            "세종특별자치시",
+            "경기도",
+            "강원특별자치도",
+            "충청북도",
+            "충청남도",
+            "전북특별자치도",
+            "전라남도",
+            "경상북도",
+            "경상남도",
+            "제주특별자치도",
+        )
+        region = next(
+            (
+                candidate
+                for candidate in known_regions
+                if candidate in normalized_title_text
+            ),
+            "",
+        )
+
+        if not region:
+            region_match = re.search(
+                r"(?<![가-힣])"
+                r"([가-힣]{2,6}(?:특별자치도|특별자치시|"
+                r"특별시|광역시|[남북]도|도))"
+                r"(?![가-힣])",
+                normalized_title_text,
+            )
+            region = region_match.group(1) if region_match else ""
+
+        return " ".join(
+            part
+            for part in (
+                region,
+                "도민 체감형 AX 경진대회",
+            )
+            if part
+        )
+
     title_patterns = [
         r"(?:제|A[lI]?|[|Il!])\s*\d+\s*(?:회|외)\s+"
         r"전국\s+[^\n,\"']{1,30}?공모전",
         r"(?:제|A[lI]?|[|Il!])\s*\d+\s*(?:회|외)\s+"
         r"[^\n,\"']{1,40}?공모전",
+        r"[^\n,\"']{2,50}?경진\s*대회",
     ]
 
     for pattern in title_patterns:
-        title_match = re.search(pattern, text, re.IGNORECASE)
+        title_match = re.search(
+            pattern,
+            normalized_title_text,
+            re.IGNORECASE,
+        )
 
         if not title_match:
             continue
@@ -478,6 +550,7 @@ def extract_schedule_timeline(
 
         if (
             "추진일정" not in compact_line
+            and "주진일정" not in compact_line
             and "평가절차" not in compact_line
         ):
             continue
@@ -999,7 +1072,8 @@ def extract_important_memos(text: str) -> list[dict]:
         (
             "문의처",
             "contact",
-            r"(?:문의|연락처|담당자|전화|E-?mail)",
+            r"(?:문의|연락처|담당자|전화|이메일|E-?mail|"
+            r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})",
         ),
         (
             "신청 및 접수",
@@ -1063,6 +1137,8 @@ def extract_important_memos(text: str) -> list[dict]:
         "제출서류",
         "접수및제출",
         "평가절차",
+        "추진일정",
+        "주진일정",
         "시상내역",
         "수상자혜택및지원",
     }
@@ -1116,6 +1192,9 @@ def extract_important_memos(text: str) -> list[dict]:
             continue
 
         if compact_line.strip("|·ㆍ/[]()") in heading_words:
+            continue
+
+        if re.search(r"(?:추진|주진)일정", compact_line):
             continue
 
         if (
@@ -1182,7 +1261,12 @@ def extract_important_memos(text: str) -> list[dict]:
                     r"\s+[·ㆍ]\s+",
                     normalized_line.lstrip("*#|·ㆍ "),
                     maxsplit=1,
-                )[0].strip()
+                )[0].strip(" ~-·")
+                normalized_line = re.sub(
+                    r"^[콩공]\s*모\s*방법\s*",
+                    "공모 방법: ",
+                    normalized_line,
+                )
 
         deduplication_key = re.sub(
             r"[^0-9A-Za-z가-힣]",
@@ -1375,6 +1459,22 @@ async def analyze_schedule(
             processed_image = ImageOps.autocontrast(
                 processed_image
             )
+            title_ocr_image = None
+            width, height = processed_image.size
+
+            if height >= width * 1.15:
+                title_ocr_image = processed_image.crop(
+                    (
+                        int(width * 0.03),
+                        int(height * 0.05),
+                        int(width * 0.67),
+                        int(height * 0.32),
+                    )
+                )
+                title_ocr_image = title_ocr_image.point(
+                    lambda pixel: 0 if pixel >= 180 else 255
+                )
+
             processed_image = ImageEnhance.Contrast(
                 processed_image
             ).enhance(1.5)
@@ -1387,8 +1487,8 @@ async def analyze_schedule(
                     (
                         0,
                         0,
-                        max(1, int(width * 0.62)),
-                        int(height * 0.46),
+                        max(1, int(width * 0.78)),
+                        int(height * 0.65),
                     )
                 )
                 timeline_image = processed_image.crop(
@@ -1436,6 +1536,17 @@ async def analyze_schedule(
                 lang="kor+eng",
                 config="--oem 3 --psm 6",
             )
+
+            if title_ocr_image is not None:
+                title_ocr_text = await run_in_threadpool(
+                    pytesseract.image_to_string,
+                    title_ocr_image,
+                    lang="kor",
+                    config="--oem 3 --psm 6",
+                )
+
+                if title_ocr_text.strip():
+                    ocr_text = f"{title_ocr_text}\n{ocr_text}"
 
     except Image.DecompressionBombError as error:
         raise HTTPException(

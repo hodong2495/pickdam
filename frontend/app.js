@@ -619,7 +619,7 @@ function renderSchedules(schedules) {
       )
     );
 
-    if (!schedule.all_day || schedule.end_time) {
+    if (schedule.end_time) {
       article.appendChild(
         createTextRow(
           schedule.all_day ? "종료 날짜" : "종료",
