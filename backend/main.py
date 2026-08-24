@@ -187,6 +187,8 @@ def extract_event_title(text: str) -> str:
         r"(?:제|A[lI]?|[|Il!])\s*\d+\s*(?:회|외)\s+"
         r"[^\n,\"']{1,40}?공모전",
         r"[^\n,\"']{2,50}?경진\s*대회",
+        r"(?:20\d{2}\s*)?[^\n,\"']{2,50}?"
+        r"(?:교육|강좌|세미나|워크숍)",
     ]
 
     for pattern in title_patterns:
@@ -390,6 +392,42 @@ def extract_schedule(text: str, filename: str | None) -> dict:
 
         if location:
             break
+
+    if not location:
+        normalized_location_text = re.sub(
+            r"(?<=\s)(\d)\1S\b",
+            r"\1층",
+            text,
+        )
+        normalized_location_text = re.sub(
+            r"(?<=\d)S\b",
+            "층",
+            normalized_location_text,
+        )
+        facility_match = re.search(
+            r"(?<![가-힣])"
+            r"((?:[가-힣]+\s+){1,3}[가-힣]*"
+            r"(?:학습관|회관|센터|도서관|문화원|대학교|학교)"
+            r"\s*\d*\s*(?:층)?)",
+            normalized_location_text,
+        )
+
+        if facility_match:
+            location = re.sub(
+                r"\s+",
+                " ",
+                facility_match.group(1),
+            ).strip()
+            nearby_location_text = normalized_location_text[
+                facility_match.end() : facility_match.end() + 180
+            ]
+            room_match = re.search(
+                r"([가-힣]{2,}(?:교실|강당|회의실|세미나실|교육장))",
+                nearby_location_text,
+            )
+
+            if room_match and room_match.group(1) not in location:
+                location = f"{location} {room_match.group(1)}"
 
     title = extract_event_title(text)
     matched_title_lines = []
@@ -736,6 +774,7 @@ def extract_multiple_schedules(
         event_type: str,
         all_day: bool,
         needs_confirmation: bool = False,
+        candidate_memo: str | None = None,
     ) -> None:
         candidate_title = f"{base_title} {title_suffix}".strip()
         deduplication_key = (
@@ -753,7 +792,11 @@ def extract_multiple_schedules(
                 title=candidate_title,
                 start_time=start_time,
                 location=location,
-                memo=memo,
+                memo=(
+                    candidate_memo
+                    if candidate_memo is not None
+                    else memo
+                ),
                 source_text=source_text,
                 event_type=event_type,
                 all_day=all_day,
@@ -843,12 +886,12 @@ def extract_multiple_schedules(
         r"(?:(?P<start_year>20\d{2})\s*[년.\-/]\s*)?"
         r"(?P<start_month>\d{1,2})\s*[월.\-/]\s*"
         r"(?P<start_day>\d{1,2})\s*일?"
-        r"(?:\s*\([월화수목금토일]\))?"
+        r"\s*[.]?(?:\s*\([월화수목금토일]\))?"
         r"\s*(?:▶|→|~|～|-)\s*"
         r"(?:(?P<end_year>20\d{2})\s*[년.\-/]\s*)?"
         r"(?P<end_month>\d{1,2})\s*[월.\-/]\s*"
         r"(?P<end_day>\d{1,2})\s*일?"
-        r"(?:\s*\([월화수목금토일]\))?"
+        r"\s*[.]?(?:\s*\([월화수목금토일]\))?"
         r"(?:\s*[.]?\s*(?P<ampm>오전|오후|AM|PM)?\s*"
         r"(?P<end_hour>\d{1,2})"
         r"\s*[:시]\s*"
@@ -886,9 +929,94 @@ def extract_multiple_schedules(
                 source_text=period_match.group(0),
                 event_type="application_start",
                 all_day=True,
+                candidate_memo=(
+                    "신청 시작: "
+                    f"{start_year:04d}.{start_month:02d}."
+                    f"{start_day:02d} (종일)"
+                ),
             )
         except ValueError:
             pass
+
+    if re.search(r"교육\s*(?:일시|일정)", full_text):
+        dated_event_pattern = re.compile(
+            r"(?P<year>20\d{2})\s*[년.\-/]\s*"
+            r"(?P<month>\d{1,2})\s*[월.\-/]\s*"
+            r"(?P<day>\d{1,2})\s*일?\s*[.]?"
+            r"(?:\s*\([월화수목금토일]\))?"
+        )
+        time_range_pattern = re.compile(
+            r"(?P<start_hour>[01]?\d|2[0-3])\s*[:시]\s*"
+            r"(?P<start_minute>\d{2})\s*"
+            r"(?:~|～|-|→)\s*"
+            r"(?P<end_hour>[01]?\d|2[0-3])\s*[:시]\s*"
+            r"(?P<end_minute>\d{2})"
+        )
+
+        for date_match in dated_event_pattern.finditer(full_text):
+            following_text = full_text[
+                date_match.end() : date_match.end() + 220
+            ]
+            time_range_match = time_range_pattern.search(
+                following_text
+            )
+
+            if not time_range_match:
+                continue
+
+            next_date_match = dated_event_pattern.search(
+                following_text
+            )
+
+            if (
+                next_date_match
+                and next_date_match.start() < time_range_match.start()
+            ):
+                continue
+
+            try:
+                event_start = datetime(
+                    int(date_match.group("year")),
+                    int(date_match.group("month")),
+                    int(date_match.group("day")),
+                    int(time_range_match.group("start_hour")),
+                    int(time_range_match.group("start_minute")),
+                )
+                event_end = event_start.replace(
+                    hour=int(time_range_match.group("end_hour")),
+                    minute=int(time_range_match.group("end_minute")),
+                )
+            except ValueError:
+                continue
+
+            start_value = event_start.strftime("%Y-%m-%dT%H:%M")
+            deduplication_key = ("education", start_value)
+
+            if deduplication_key in seen:
+                continue
+
+            seen.add(deduplication_key)
+            education_candidate = make_schedule_candidate(
+                title=base_title,
+                start_time=start_value,
+                location=location,
+                memo=(
+                    "교육 시간: "
+                    f"{event_start.strftime('%Y.%m.%d %H:%M')}~"
+                    f"{event_end.strftime('%H:%M')}"
+                ),
+                source_text=(
+                    f"{date_match.group(0).strip()} "
+                    f"{time_range_match.group(0).strip()}"
+                ),
+                event_type="education",
+                all_day=False,
+            )
+            education_candidate["end_time"] = event_end.strftime(
+                "%Y-%m-%dT%H:%M"
+            )
+            candidates.append(education_candidate)
+            break
 
         end_hour = int(
             period_match.group("end_hour") or 0
@@ -922,6 +1050,16 @@ def extract_multiple_schedules(
                 source_text=period_match.group(0),
                 event_type="application_deadline",
                 all_day=period_match.group("end_hour") is None,
+                candidate_memo=(
+                    "신청 마감: "
+                    f"{end_year:04d}.{end_month:02d}."
+                    f"{end_day:02d}"
+                    + (
+                        f" {end_hour:02d}:{end_minute:02d}"
+                        if period_match.group("end_hour") is not None
+                        else " (종일)"
+                    )
+                ),
             )
         except ValueError:
             pass
@@ -960,7 +1098,7 @@ def extract_multiple_schedules(
         r"(?:(?P<year>20\d{2})\s*[년.\-/]\s*)?"
         r"(?P<month>\d{1,2})\s*[월.\-/]\s*"
         r"(?P<day>\d{1,2})\s*일?"
-        r"(?:\s*\([월화수목금토일]\))?"
+        r"\s*[.]?(?:\s*\([월화수목금토일]\))?"
         r"(?:\s*[.]?\s*(?P<ampm>오전|오후|AM|PM)?\s*"
         r"(?P<hour>\d{1,2})"
         r"\s*[:시]\s*"
@@ -1059,14 +1197,60 @@ def extract_multiple_schedules(
 
         candidates.append(fallback)
 
+    candidates.sort(
+        key=lambda candidate: candidate.get("start_time") or ""
+    )
+
     return candidates
 
 def extract_important_memos(text: str) -> list[dict]:
-    lines = [
-        re.sub(r"\s+", " ", line).strip()
-        for line in text.splitlines()
-        if line.strip()
-    ]
+    lines = []
+
+    for raw_line in text.splitlines():
+        if not raw_line.strip():
+            continue
+
+        for segment in re.split(r"\s{3,}", raw_line):
+            normalized_segment = re.sub(
+                r"\s+",
+                " ",
+                segment,
+            ).strip()
+
+            if not normalized_segment:
+                continue
+
+            url_in_segment = re.search(
+                r"(?:https?://)?(?:www\.)?"
+                r"[A-Za-z0-9.-]+\.(?:or\.kr|co\.kr|go\.kr|"
+                r"com|org|net|kr)"
+                r"(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?",
+                normalized_segment,
+                re.IGNORECASE,
+            )
+            preparation_in_segment = re.search(
+                r"(?:준비물|지참물|구비서류)\s*[:：]",
+                normalized_segment,
+            )
+
+            if (
+                preparation_in_segment
+                and url_in_segment
+                and preparation_in_segment.start()
+                < url_in_segment.start()
+            ):
+                preparation_segment = normalized_segment[
+                    : url_in_segment.start()
+                ].strip()
+                url_segment = url_in_segment.group(0).strip()
+
+                if preparation_segment:
+                    lines.append(preparation_segment)
+
+                if url_segment:
+                    lines.append(url_segment)
+            else:
+                lines.append(normalized_segment)
 
     memo_rules = [
         (
@@ -1079,7 +1263,9 @@ def extract_important_memos(text: str) -> list[dict]:
             "신청 및 접수",
             "application",
             r"(?:신청|접수|온라인\s*접수|제출|"
-            r"홈페이지|www\.|페이지.{0,30}등록)",
+            r"홈페이지|www\.|페이지.{0,30}등록|"
+            r"(?:https?://)?(?:www\.)?[A-Za-z0-9.-]+"
+            r"\.(?:or\.kr|co\.kr|go\.kr|com|org|net|kr))",
         ),
         (
             "준비물",
@@ -1105,14 +1291,16 @@ def extract_important_memos(text: str) -> list[dict]:
         (
             "민감정보",
             "sensitive",
-            r"(?:비밀번호|패스워드|password|인증번호|PIN)",
+            r"(?:(?:비밀번호|패스워드|password)\s*[:：]\s*\S+|"
+            r"(?:인증번호|OTP|PIN)\s*[:：]?\s*\d{4,8})",
         ),
     ]
 
     sensitive_pattern = re.compile(
         r"(?:"
-        r"비밀번호|패스워드|password|"
-        r"인증번호|일회용\s*번호|OTP|PIN|"
+        r"(?:비밀번호|패스워드|password)\s*[:：]\s*\S+|"
+        r"(?:인증번호|일회용\s*번호|OTP|PIN)"
+        r"\s*[:：]?\s*\d{4,8}|"
         r"\d{6}\s*[-]\s*\d{7}|"
         r"(?:계좌|입금)[^\n]{0,20}\d{8,16}"
         r")",
@@ -1133,6 +1321,7 @@ def extract_important_memos(text: str) -> list[dict]:
     }
     heading_words = {
         "공모분야",
+        "교육내용및준비물",
         "신청요건",
         "제출서류",
         "접수및제출",
@@ -1154,6 +1343,9 @@ def extract_important_memos(text: str) -> list[dict]:
 
         if re.search(r"등록|신청서|동의서|계획서|\d+\s*부", line):
             score += 4
+
+        if re.search(r"준비물\s*[:：]", line):
+            score += 7
 
         if re.search(
             r"E-?mail|[\w.+-]+@[\w.-]+|\d{2,4}-\d{3,4}-\d{4}",
@@ -1207,11 +1399,26 @@ def extract_important_memos(text: str) -> list[dict]:
         if matched_type == "application" and not re.search(
             r"(?:https?://|www\.|홈페이지|페이지|접속|등록|"
             r"서류|신청서|동의서|계획서|마감|까지|\d+\s*부|"
-            r"\d{1,2}\s*월)",
+            r"\d{1,2}\s*월|[A-Za-z0-9.-]+\."
+            r"(?:or\.kr|co\.kr|go\.kr|com|org|net|kr))",
             normalized_line,
             re.IGNORECASE,
         ):
             continue
+
+        if matched_type == "preparation":
+            preparation_match = re.search(
+                r"(?:준비물|지참물|구비서류)\s*[:：]\s*(.+)",
+                normalized_line,
+            )
+
+            if preparation_match:
+                preparation_content = preparation_match.group(1).strip(
+                    " ~-·"
+                )
+                normalized_line = f"준비물: {preparation_content}"
+            elif "교육내용및준비물" in compact_line:
+                continue
 
         if matched_type == "contact":
             phone_match = re.search(
@@ -1372,9 +1579,7 @@ def build_analysis_response(
         analysis_filename,
     )
 
-    important_memos = extract_important_memos(
-    cleaned_text
-    )
+    important_memos = extract_important_memos(text)
 
     primary_schedule = schedules[0]
 
@@ -1460,6 +1665,7 @@ async def analyze_schedule(
                 processed_image
             )
             title_ocr_image = None
+            title_ocr_language = "kor"
             width, height = processed_image.size
 
             if height >= width * 1.15:
@@ -1474,6 +1680,23 @@ async def analyze_schedule(
                 title_ocr_image = title_ocr_image.point(
                     lambda pixel: 0 if pixel >= 180 else 255
                 )
+            else:
+                title_ocr_image = processed_image.crop(
+                    (
+                        int(width * 0.03),
+                        int(height * 0.17),
+                        int(width * 0.68),
+                        int(height * 0.34),
+                    )
+                )
+                title_ocr_image = title_ocr_image.resize(
+                    (
+                        max(1, int(title_ocr_image.width * 0.7)),
+                        max(1, int(title_ocr_image.height * 0.7)),
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
+                title_ocr_language = "kor+eng"
 
             processed_image = ImageEnhance.Contrast(
                 processed_image
@@ -1541,7 +1764,7 @@ async def analyze_schedule(
                 title_ocr_text = await run_in_threadpool(
                     pytesseract.image_to_string,
                     title_ocr_image,
-                    lang="kor",
+                    lang=title_ocr_language,
                     config="--oem 3 --psm 6",
                 )
 
