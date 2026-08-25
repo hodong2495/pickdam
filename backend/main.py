@@ -181,6 +181,25 @@ def extract_event_title(text: str) -> str:
             if part
         )
 
+    # 세로 포스터에서 제목이 "2026 시민 데이터 활용" / "워크숍"처럼
+    # 두 줄로 나뉜 경우, 위쪽 홍보 문구보다 연도가 있는 제목을 우선합니다.
+    split_title_match = re.search(
+        r"(?<![\d.])"
+        r"(?P<first>20\d{2}\s+[가-힣A-Za-z][^\n]{1,45}?)\s*\n\s*"
+        r"(?P<second>[^\n]{0,18}?(?:교육|강좌|세미나|워크숍|공모전|경진대회))"
+        r"(?:\s*$|\s*\n)",
+        normalized_title_text,
+        re.IGNORECASE,
+    )
+
+    if split_title_match:
+        return re.sub(
+            r"\s+",
+            " ",
+            f"{split_title_match.group('first')} "
+            f"{split_title_match.group('second')}",
+        ).strip()
+
     title_patterns = [
         r"(?:제|A[lI]?|[|Il!])\s*\d+\s*(?:회|외)\s+"
         r"전국\s+[^\n,\"']{1,30}?공모전",
@@ -393,17 +412,31 @@ def extract_schedule(text: str, filename: str | None) -> dict:
         if location:
             break
 
-    if not location:
-        normalized_location_text = re.sub(
+    normalized_location_text = re.sub(
             r"(?<=\s)(\d)\1S\b",
             r"\1층",
             text,
         )
-        normalized_location_text = re.sub(
+    normalized_location_text = re.sub(
             r"(?<=\d)S\b",
             "층",
             normalized_location_text,
         )
+
+    explicit_no_location = bool(
+        re.fullmatch(r"(?:장소\s*)?없음", location.strip())
+    )
+
+    if not location or (
+        not explicit_no_location
+        and (
+            re.search(r"준비물|문의|신청|접수", location)
+            or not re.search(
+                r"학습관|회관|센터|도서관|문화원|대학교|학교",
+                location,
+            )
+        )
+    ):
         facility_match = re.search(
             r"(?<![가-힣])"
             r"((?:[가-힣]+\s+){1,3}[가-힣]*"
@@ -418,11 +451,16 @@ def extract_schedule(text: str, filename: str | None) -> dict:
                 " ",
                 facility_match.group(1),
             ).strip()
+            location = re.sub(
+                r"^(?:(?:(?:교육\s*)?장소|준비물)\s+)+",
+                "",
+                location,
+            ).strip()
             nearby_location_text = normalized_location_text[
                 facility_match.end() : facility_match.end() + 180
             ]
             room_match = re.search(
-                r"([가-힣]{2,}(?:교실|강당|회의실|세미나실|교육장))",
+                r"([가-힣]{0,12}(?:교실|강당|회의실|세미나실|실습실|교육장))",
                 nearby_location_text,
             )
 
@@ -952,6 +990,84 @@ def extract_multiple_schedules(
             r"(?P<end_hour>[01]?\d|2[0-3])\s*[:시]\s*"
             r"(?P<end_minute>\d{2})"
         )
+        table_detail_candidates = []
+        education_content_sections = re.split(
+            r"교육\s*내용",
+            full_text,
+        )
+
+        for content_section in reversed(
+            education_content_sections[1:]
+        ):
+            section_candidates = []
+
+            for content_line in content_section.splitlines():
+                normalized_content = re.sub(
+                    r"\s+",
+                    " ",
+                    content_line,
+                ).strip(" |·ㆍ,:;-")
+
+                if not normalized_content:
+                    continue
+
+                if re.search(
+                    r"교육\s*장소|준비물|온라인|문의|신청|접수|주최",
+                    normalized_content,
+                ):
+                    break
+
+                if re.search(
+                    r"20\d{2}[.\-/]|\d{1,2}:\d{2}",
+                    normalized_content,
+                ):
+                    continue
+
+                if re.fullmatch(r"\d+\s*회", normalized_content):
+                    continue
+
+                if (
+                    re.search(r"[가-힣]{2,}", normalized_content)
+                    and 2 <= len(normalized_content) <= 32
+                ):
+                    section_candidates.append(normalized_content)
+
+            if section_candidates:
+                table_detail_candidates = section_candidates[:6]
+                break
+
+        if not table_detail_candidates:
+            fallback_detail_candidates = []
+
+            for content_line in full_text.splitlines():
+                normalized_content = re.sub(
+                    r"\s+",
+                    " ",
+                    content_line,
+                ).strip(" |·ㆍ,:;-")
+
+                if (
+                    not 4 <= len(normalized_content) <= 32
+                    or re.search(
+                        r"20\d{2}|\d{1,2}:\d{2}|신청|접수|장소|"
+                        r"준비물|문의|온라인|주최|포스터|두\s*번|"
+                        r"데이터로\s*발견",
+                        normalized_content,
+                    )
+                    or not re.search(
+                        r"(?:이해|시각화|실습|분석|기초|활용|교육|과정)$",
+                        normalized_content,
+                    )
+                ):
+                    continue
+
+                if normalized_content not in fallback_detail_candidates:
+                    fallback_detail_candidates.append(normalized_content)
+
+            if len(fallback_detail_candidates) >= 2:
+                table_detail_candidates = fallback_detail_candidates[:6]
+
+        education_row_index = 0
 
         for date_match in dated_event_pattern.finditer(full_text):
             following_text = full_text[
@@ -996,8 +1112,76 @@ def extract_multiple_schedules(
                 continue
 
             seen.add(deduplication_key)
+            detail_end = min(
+                len(following_text),
+                time_range_match.end() + 140,
+            )
+
+            if (
+                next_date_match
+                and next_date_match.start() > time_range_match.end()
+            ):
+                detail_end = next_date_match.start()
+
+            detail_parts = []
+
+            for detail_line in following_text[
+                time_range_match.end() : detail_end
+            ].splitlines():
+                cleaned_detail = re.sub(
+                    r"^[\s|·ㆍ,:;-]+|[\s|·ㆍ,:;-]+$",
+                    "",
+                    detail_line,
+                )
+                cleaned_detail = re.sub(
+                    r"\s+",
+                    " ",
+                    cleaned_detail,
+                ).strip()
+
+                if not cleaned_detail:
+                    continue
+
+                if re.fullmatch(r"\d+\s*회", cleaned_detail):
+                    continue
+
+                if re.search(
+                    r"신청|접수|장소|준비물|문의|온라인|주최",
+                    cleaned_detail,
+                ):
+                    break
+
+                if not re.search(r"[가-힣]{2,}", cleaned_detail):
+                    continue
+
+                detail_parts.append(cleaned_detail)
+
+                if len("".join(detail_parts).replace(" ", "")) >= 6:
+                    break
+
+            detail_text = " ".join(detail_parts[:2]).strip()
+
+            if (
+                len(detail_text.replace(" ", "")) < 4
+                and education_row_index < len(table_detail_candidates)
+            ):
+                detail_text = table_detail_candidates[
+                    education_row_index
+                ]
+
+            if (
+                not re.search(r"[가-힣]{2,}", detail_text)
+                or re.search(r"신청|접수|장소|준비물|문의", detail_text)
+                or len(detail_text) > 32
+            ):
+                detail_text = ""
+
             education_candidate = make_schedule_candidate(
-                title=base_title,
+                title=(
+                    f"{base_title} {detail_text}".strip()
+                    if detail_text
+                    else base_title
+                ),
                 start_time=start_value,
                 location=location,
                 memo=(
@@ -1016,7 +1200,7 @@ def extract_multiple_schedules(
                 "%Y-%m-%dT%H:%M"
             )
             candidates.append(education_candidate)
-            break
+            education_row_index += 1
 
         end_hour = int(
             period_match.group("end_hour") or 0
@@ -1206,6 +1390,55 @@ def extract_multiple_schedules(
 def extract_important_memos(text: str) -> list[dict]:
     lines = []
 
+    normalized_raw_lines = [
+        re.sub(r"\s+", " ", raw_line).strip()
+        for raw_line in text.splitlines()
+        if raw_line.strip()
+    ]
+
+    # 표 형식에서 "준비물" 제목과 내용이 서로 다른 칸/줄로 OCR되어도
+    # 실제 준비물 항목만 다시 묶어 줍니다.
+    if any("준비물" in line for line in normalized_raw_lines):
+        preparation_context = " ".join(normalized_raw_lines)
+        preparation_items = re.findall(
+            r"(?:개인\s*)?(?:노트북|스마트폰|태블릿|신분증|"
+            r"필기도구|충전\s*케이블|이어폰|마스크)",
+            preparation_context,
+        )
+        unique_preparation_items = []
+
+        for item in preparation_items:
+            normalized_item = re.sub(r"\s+", " ", item).strip()
+
+            if normalized_item not in unique_preparation_items:
+                unique_preparation_items.append(normalized_item)
+
+        if unique_preparation_items:
+            lines.append(
+                "준비물: " + ", ".join(unique_preparation_items[:6])
+            )
+
+    phone_matches = re.findall(
+        r"(?<!\d)(0\d{1,2})[-.\s](\d{3,4})[-.\s](\d{4})(?!\d)",
+        text,
+    )
+    email_matches = re.findall(
+        r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",
+        text,
+        re.IGNORECASE,
+    )
+
+    if phone_matches or email_matches:
+        contact_parts = []
+
+        if phone_matches:
+            contact_parts.append("-".join(phone_matches[0]))
+
+        if email_matches:
+            contact_parts.append(email_matches[0])
+
+        lines.append("문의: " + " / ".join(contact_parts))
+
     for raw_line in text.splitlines():
         if not raw_line.strip():
             continue
@@ -1221,7 +1454,7 @@ def extract_important_memos(text: str) -> list[dict]:
                 continue
 
             url_in_segment = re.search(
-                r"(?:https?://)?(?:www\.)?"
+                r"(?<![@A-Za-z0-9._-])(?:https?://)?(?:www\.)?"
                 r"[A-Za-z0-9.-]+\.(?:or\.kr|co\.kr|go\.kr|"
                 r"com|org|net|kr)"
                 r"(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?",
@@ -1252,6 +1485,12 @@ def extract_important_memos(text: str) -> list[dict]:
             else:
                 lines.append(normalized_segment)
 
+                if (
+                    url_in_segment
+                    and normalized_segment.strip() != url_in_segment.group(0).strip()
+                ):
+                    lines.append(url_in_segment.group(0).strip())
+
     memo_rules = [
         (
             "문의처",
@@ -1264,7 +1503,7 @@ def extract_important_memos(text: str) -> list[dict]:
             "application",
             r"(?:신청|접수|온라인\s*접수|제출|"
             r"홈페이지|www\.|페이지.{0,30}등록|"
-            r"(?:https?://)?(?:www\.)?[A-Za-z0-9.-]+"
+            r"(?<![@A-Za-z0-9._-])(?:https?://)?(?:www\.)?[A-Za-z0-9.-]+"
             r"\.(?:or\.kr|co\.kr|go\.kr|com|org|net|kr))",
         ),
         (
@@ -1406,6 +1645,17 @@ def extract_important_memos(text: str) -> list[dict]:
         ):
             continue
 
+        if (
+            matched_type == "application"
+            and re.search(r"(?:신청|접수)\s*기간", normalized_line)
+            and not re.search(
+                r"https?://|www\.|홈페이지|신청서|서류|제출|등록",
+                normalized_line,
+                re.IGNORECASE,
+            )
+        ):
+            continue
+
         if matched_type == "preparation":
             preparation_match = re.search(
                 r"(?:준비물|지참물|구비서류)\s*[:：]\s*(.+)",
@@ -1449,7 +1699,7 @@ def extract_important_memos(text: str) -> list[dict]:
                 flags=re.IGNORECASE,
             )
             url_match = re.search(
-                r"(?:https?://)?(?:www\.)?"
+                r"(?<![@A-Za-z0-9._-])(?:https?://)?(?:www\.)?"
                 r"[A-Za-z0-9.-]+\.(?:or\.kr|co\.kr|go\.kr|"
                 r"com|org|net|kr)(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*)?",
                 normalized_line,
@@ -1732,9 +1982,25 @@ async def analyze_schedule(
                 bottom_image = processed_image.crop(
                     (0, int(height * 0.82), width, height)
                 )
+                right_table_image = processed_image.crop(
+                    (
+                        int(width * 0.62),
+                        int(height * 0.42),
+                        width,
+                        int(height * 0.78),
+                    )
+                )
+                right_table_image = right_table_image.resize(
+                    (
+                        max(1, int(right_table_image.width * 1.5)),
+                        max(1, int(right_table_image.height * 1.5)),
+                    ),
+                    Image.Resampling.LANCZOS,
+                )
                 regions = [
                     top_image,
                     timeline_image,
+                    right_table_image,
                     bottom_image,
                 ]
                 spacer = 24
