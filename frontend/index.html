@@ -15,7 +15,7 @@
 
   <title>AI 일정 도우미</title>
 
-<link rel="stylesheet" href="/style.css?v=18">
+<link rel="stylesheet" href="/style.css?v=22">
 
 </head>
 
@@ -50,6 +50,43 @@
         <small>안내문 속 일정을 한 번에</small>
       </span>
     </a>
+
+    <nav class="desktop-navigation" aria-label="주요 화면">
+      <span class="desktop-navigation-guide" aria-hidden="true">
+        ↑ 메모·분석·캘린더 화면을 선택하세요
+      </span>
+
+      <button
+        type="button"
+        class="mobile-nav-button desktop-nav-button"
+        data-target-page="memo"
+        aria-label="메모 화면"
+      >
+        <span aria-hidden="true">📝</span>
+        <strong>메모장</strong>
+      </button>
+
+      <button
+        type="button"
+        class="mobile-nav-button desktop-nav-button active"
+        data-target-page="analyze"
+        aria-label="정보 분석 화면"
+        aria-current="page"
+      >
+        <span aria-hidden="true">✦</span>
+        <strong>일정 분석</strong>
+      </button>
+
+      <button
+        type="button"
+        class="mobile-nav-button desktop-nav-button"
+        data-target-page="calendar"
+        aria-label="캘린더 화면"
+      >
+        <span aria-hidden="true">📅</span>
+        <strong>캘린더</strong>
+      </button>
+    </nav>
 
     <span class="privacy-badge">
       <span aria-hidden="true">●</span>

@@ -207,6 +207,8 @@ def extract_event_title(text: str) -> str:
         r"[^\n,\"']{1,40}?공모전",
         r"[^\n,\"']{2,50}?경진\s*대회",
         r"(?:20\d{2}\s*)?[^\n,\"']{2,50}?"
+        r"(?:예방접종|건강검진|진료)\s*(?:예약\s*)?안내",
+        r"(?:20\d{2}\s*)?[^\n,\"']{2,50}?"
         r"(?:교육|강좌|세미나|워크숍)",
     ]
 
@@ -460,7 +462,8 @@ def extract_schedule(text: str, filename: str | None) -> dict:
                 facility_match.end() : facility_match.end() + 180
             ]
             room_match = re.search(
-                r"([가-힣]{0,12}(?:교실|강당|회의실|세미나실|실습실|교육장))",
+                r"([가-힣]{0,12}(?:교실|강당|회의실|세미나실|실습실|"
+                r"접종실|진료실|교육장))",
                 nearby_location_text,
             )
 
@@ -843,6 +846,9 @@ def extract_multiple_schedules(
         )
 
     full_text = "\n".join(lines)
+    is_message_capture = bool(
+        re.search(r"문자\s*메시지|메시지\s*입력|문자\s*캡처", full_text)
+    )
 
     # 예: 아이브는 2026년 2월 23일 앨범을 발매할 예정입니다.
     korean_full_date_pattern = re.compile(
@@ -853,6 +859,14 @@ def extract_multiple_schedules(
 
     for line in lines:
         for match in korean_full_date_pattern.finditer(line):
+            if (
+                is_message_capture
+                and korean_full_date_pattern.fullmatch(
+                    line.strip(" <>[]")
+                )
+            ):
+                continue
+
             try:
                 event_date = datetime(
                     int(match.group("year")),
@@ -976,7 +990,53 @@ def extract_multiple_schedules(
         except ValueError:
             pass
 
-    if re.search(r"교육\s*(?:일시|일정)", full_text):
+        end_hour = int(period_match.group("end_hour") or 0)
+        end_minute = int(period_match.group("end_minute") or 0)
+        ampm = (period_match.group("ampm") or "").upper()
+
+        if ampm in {"오후", "PM"} and end_hour < 12:
+            end_hour += 12
+
+        if ampm in {"오전", "AM"} and end_hour == 12:
+            end_hour = 0
+
+        try:
+            end_value = datetime(
+                end_year,
+                end_month,
+                end_day,
+                end_hour,
+                end_minute,
+            ).strftime("%Y-%m-%dT%H:%M")
+
+            add_candidate(
+                title_suffix="접수 마감",
+                start_time=end_value,
+                source_text=period_match.group(0),
+                event_type="application_deadline",
+                all_day=period_match.group("end_hour") is None,
+                candidate_memo=(
+                    "신청 마감: "
+                    f"{end_year:04d}.{end_month:02d}."
+                    f"{end_day:02d}"
+                    + (
+                        f" {end_hour:02d}:{end_minute:02d}"
+                        if period_match.group("end_hour") is not None
+                        else " (종일)"
+                    )
+                ),
+            )
+        except ValueError:
+            pass
+
+    event_context_match = re.search(
+        r"(?P<kind>교육|접종|행사|검진)\s*(?:일시|일정)",
+        full_text,
+    )
+
+    if event_context_match:
+        event_kind = event_context_match.group("kind")
+        event_section_text = full_text[event_context_match.end() :]
         dated_event_pattern = re.compile(
             r"(?P<year>20\d{2})\s*[년.\-/]\s*"
             r"(?P<month>\d{1,2})\s*[월.\-/]\s*"
@@ -986,9 +1046,9 @@ def extract_multiple_schedules(
         time_range_pattern = re.compile(
             r"(?P<start_hour>[01]?\d|2[0-3])\s*[:시]\s*"
             r"(?P<start_minute>\d{2})\s*"
-            r"(?:~|～|-|→)\s*"
+            r"(?:(?:~|～|-|→)\s*"
             r"(?P<end_hour>[01]?\d|2[0-3])\s*[:시]\s*"
-            r"(?P<end_minute>\d{2})"
+            r"(?P<end_minute>\d{2}))?"
         )
         table_detail_candidates = []
         education_content_sections = re.split(
@@ -1069,8 +1129,8 @@ def extract_multiple_schedules(
 
         education_row_index = 0
 
-        for date_match in dated_event_pattern.finditer(full_text):
-            following_text = full_text[
+        for date_match in dated_event_pattern.finditer(event_section_text):
+            following_text = event_section_text[
                 date_match.end() : date_match.end() + 220
             ]
             time_range_match = time_range_pattern.search(
@@ -1098,15 +1158,24 @@ def extract_multiple_schedules(
                     int(time_range_match.group("start_hour")),
                     int(time_range_match.group("start_minute")),
                 )
-                event_end = event_start.replace(
-                    hour=int(time_range_match.group("end_hour")),
-                    minute=int(time_range_match.group("end_minute")),
-                )
+                event_end = None
+
+                if time_range_match.group("end_hour"):
+                    event_end = event_start.replace(
+                        hour=int(time_range_match.group("end_hour")),
+                        minute=int(time_range_match.group("end_minute")),
+                    )
             except ValueError:
                 continue
 
             start_value = event_start.strftime("%Y-%m-%dT%H:%M")
-            deduplication_key = ("education", start_value)
+            event_type = {
+                "교육": "education",
+                "접종": "vaccination",
+                "검진": "medical_checkup",
+                "행사": "general",
+            }.get(event_kind, "general")
+            deduplication_key = (event_type, start_value)
 
             if deduplication_key in seen:
                 continue
@@ -1162,8 +1231,11 @@ def extract_multiple_schedules(
             detail_text = " ".join(detail_parts[:2]).strip()
 
             if (
+                event_kind == "교육"
+                and (
                 len(detail_text.replace(" ", "")) < 4
                 and education_row_index < len(table_detail_candidates)
+                )
             ):
                 detail_text = table_detail_candidates[
                     education_row_index
@@ -1185,68 +1257,29 @@ def extract_multiple_schedules(
                 start_time=start_value,
                 location=location,
                 memo=(
-                    "교육 시간: "
-                    f"{event_start.strftime('%Y.%m.%d %H:%M')}~"
-                    f"{event_end.strftime('%H:%M')}"
+                    f"{event_kind} 시간: "
+                    f"{event_start.strftime('%Y.%m.%d %H:%M')}"
+                    + (
+                        f"~{event_end.strftime('%H:%M')}"
+                        if event_end
+                        else ""
+                    )
                 ),
                 source_text=(
                     f"{date_match.group(0).strip()} "
                     f"{time_range_match.group(0).strip()}"
                 ),
-                event_type="education",
+                event_type=event_type,
                 all_day=False,
             )
-            education_candidate["end_time"] = event_end.strftime(
-                "%Y-%m-%dT%H:%M"
-            )
+
+            if event_end:
+                education_candidate["end_time"] = event_end.strftime(
+                    "%Y-%m-%dT%H:%M"
+                )
+
             candidates.append(education_candidate)
             education_row_index += 1
-
-        end_hour = int(
-            period_match.group("end_hour") or 0
-        )
-        end_minute = int(
-            period_match.group("end_minute") or 0
-        )
-
-        ampm = (
-            period_match.group("ampm") or ""
-        ).upper()
-
-        if ampm in {"오후", "PM"} and end_hour < 12:
-            end_hour += 12
-
-        if ampm in {"오전", "AM"} and end_hour == 12:
-            end_hour = 0
-
-        try:
-            end_value = datetime(
-                end_year,
-                end_month,
-                end_day,
-                end_hour,
-                end_minute,
-            ).strftime("%Y-%m-%dT%H:%M")
-
-            add_candidate(
-                title_suffix="접수 마감",
-                start_time=end_value,
-                source_text=period_match.group(0),
-                event_type="application_deadline",
-                all_day=period_match.group("end_hour") is None,
-                candidate_memo=(
-                    "신청 마감: "
-                    f"{end_year:04d}.{end_month:02d}."
-                    f"{end_day:02d}"
-                    + (
-                        f" {end_hour:02d}:{end_minute:02d}"
-                        if period_match.group("end_hour") is not None
-                        else " (종일)"
-                    )
-                ),
-            )
-        except ValueError:
-            pass
 
     # 예: 공고·접수 7.15. / 접수 마감 9.15.
     keyword_patterns = [
@@ -1396,27 +1429,29 @@ def extract_important_memos(text: str) -> list[dict]:
         if raw_line.strip()
     ]
 
-    # 표 형식에서 "준비물" 제목과 내용이 서로 다른 칸/줄로 OCR되어도
+    # 표나 문자 캡처에서 "준비물" 제목과 내용이 다른 줄로 OCR되어도
     # 실제 준비물 항목만 다시 묶어 줍니다.
-    if any("준비물" in line for line in normalized_raw_lines):
-        preparation_context = " ".join(normalized_raw_lines)
-        preparation_items = re.findall(
-            r"(?:개인\s*)?(?:노트북|스마트폰|태블릿|신분증|"
-            r"필기도구|충전\s*케이블|이어폰|마스크)",
-            preparation_context,
+    preparation_context = " ".join(normalized_raw_lines)
+    preparation_items = re.findall(
+        r"(?:개인\s*)?(?:노트북|스마트폰|태블릿|신분증|"
+        r"필기도구|충전\s*케이블|이어폰|마스크|예약\s*문자)",
+        preparation_context,
+    )
+    unique_preparation_items = []
+
+    for item in preparation_items:
+        normalized_item = re.sub(r"\s+", " ", item).strip()
+
+        if normalized_item not in unique_preparation_items:
+            unique_preparation_items.append(normalized_item)
+
+    if unique_preparation_items and (
+        any("준비물" in line for line in normalized_raw_lines)
+        or len(unique_preparation_items) >= 2
+    ):
+        lines.append(
+            "준비물: " + ", ".join(unique_preparation_items[:6])
         )
-        unique_preparation_items = []
-
-        for item in preparation_items:
-            normalized_item = re.sub(r"\s+", " ", item).strip()
-
-            if normalized_item not in unique_preparation_items:
-                unique_preparation_items.append(normalized_item)
-
-        if unique_preparation_items:
-            lines.append(
-                "준비물: " + ", ".join(unique_preparation_items[:6])
-            )
 
     phone_matches = re.findall(
         r"(?<!\d)(0\d{1,2})[-.\s](\d{3,4})[-.\s](\d{4})(?!\d)",

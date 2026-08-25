@@ -109,6 +109,64 @@ summary {
   padding: 24px 0;
 }
 
+.desktop-navigation {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px;
+  border: 2px solid rgba(101, 71, 232, 0.13);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 36px rgba(62, 45, 140, 0.14);
+}
+
+.desktop-navigation-guide {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 8px 20px rgba(77, 49, 199, 0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.desktop-nav-button {
+  min-width: 108px;
+  min-height: 54px;
+  flex: none;
+  flex-direction: row;
+  gap: 9px;
+  padding: 12px 18px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+}
+
+.desktop-nav-button > span {
+  font-size: 18px;
+}
+
+.desktop-nav-button strong {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.desktop-nav-button:hover {
+  background: #f5f2ff;
+  color: var(--primary);
+}
+
+.desktop-nav-button.active {
+  border-color: rgba(101, 71, 232, 0.22);
+  box-shadow: 0 7px 18px rgba(77, 49, 199, 0.13);
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -1536,6 +1594,22 @@ input.invalid {
   padding: 28px 0 110px;
 }
 
+@media (min-width: 701px) {
+  .memo-page,
+  .calendar-page {
+    width: min(1060px, calc(100% - 40px));
+    margin-right: auto;
+    margin-left: auto;
+    padding: 28px 0 100px;
+  }
+}
+
+@media (min-width: 701px) and (max-width: 980px) {
+  .privacy-badge {
+    display: none;
+  }
+}
+
 .mobile-page-heading {
   padding: 24px 4px 28px;
 }
@@ -2652,5 +2726,25 @@ code,
   background: #e3f6ef;
   color: #157256;
   opacity: 1;
+}
+
+/* PC 메모·캘린더 화면 너비 최종 보정 */
+@media (min-width: 701px) {
+  .app-page.memo-page,
+  .app-page.calendar-page {
+    width: min(1060px, calc(100% - 40px));
+    max-width: 1060px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .memo-page > .mobile-page-heading,
+  .memo-page > .card,
+  .calendar-page > .mobile-page-heading,
+  .calendar-page > .card {
+    width: min(1060px, calc(100% - 40px));
+    margin-right: auto;
+    margin-left: auto;
+  }
 }
 
