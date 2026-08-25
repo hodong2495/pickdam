@@ -120,6 +120,24 @@ def extract_event_title(text: str) -> str:
         text,
     )
 
+    # 큰 장식 글자의 ICT가 "1ㅇ", "!07" 등으로 깨져도
+    # 회차·전국·융합·공모전 문맥이 모두 있으면 제목을 복원합니다.
+    ict_contest_match = re.search(
+        r"(?:제\s*)?(?P<edition>\d{1,2})\s*(?:회|외)\s*"
+        r"전국\s+[^\n]{0,24}?(?:융|응)\s*합",
+        normalized_title_text,
+        re.IGNORECASE,
+    )
+
+    if ict_contest_match and re.search(
+        r"공모(?:[전젼]|분야|신청|일정)",
+        normalized_title_text,
+    ):
+        return (
+            f"제{int(ict_contest_match.group('edition'))}회 "
+            "전국 ICT 융합 공모전"
+        )
+
     has_ax = bool(
         re.search(
             r"(?:\bAX\b|스\s*[×xX])",
@@ -429,7 +447,7 @@ def extract_schedule(text: str, filename: str | None) -> dict:
         re.fullmatch(r"(?:장소\s*)?없음", location.strip())
     )
 
-    if not location or (
+    needs_facility_fallback = not location or (
         not explicit_no_location
         and (
             re.search(r"준비물|문의|신청|접수", location)
@@ -438,7 +456,20 @@ def extract_schedule(text: str, filename: str | None) -> dict:
                 location,
             )
         )
-    ):
+    )
+    has_location_context = bool(
+        re.search(
+            r"(?:^|\n)\s*(?:장소|교육\s*장소|행사\s*장소|"
+            r"접종\s*장소)\s*(?:[:：]|\n|\s)",
+            normalized_location_text,
+            re.MULTILINE,
+        )
+    )
+
+    if needs_facility_fallback and not has_location_context:
+        location = ""
+
+    if needs_facility_fallback and has_location_context:
         facility_match = re.search(
             r"(?<![가-힣])"
             r"((?:[가-힣]+\s+){1,3}[가-힣]*"
@@ -648,6 +679,7 @@ def extract_schedule_timeline(
             r"\s*(?:월|\.)\s*"
             r"(?:(?P<day>\d{1,2})\s*\.?)?"
             r"(?:\s*(?P<qualifier>말|초|중순|초순|말일))?"
+            r"(?!\s*주차)"
             r"(?!\d)",
             normalized_text,
         )
@@ -685,8 +717,9 @@ def extract_schedule_timeline(
     if len(exact_dates) < 2:
         return []
 
+    exact_dates.sort(key=lambda item: item[0])
     start_date, start_source = exact_dates[0]
-    deadline_date, deadline_source = exact_dates[1]
+    deadline_date, deadline_source = exact_dates[-1]
 
 
     readable_characters = re.sub(
@@ -1421,6 +1454,25 @@ def extract_multiple_schedules(
     return candidates
 
 def extract_important_memos(text: str) -> list[dict]:
+    text = re.sub(
+        r"ww[rw]?\.?\s*v?ictfestival\s*(?:\.|\s)*or\s*(?:\.|\s)*kr",
+        "www.ictfestival.or.kr",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    # OCR에서 or.kr, co.kr, go.kr의 점 하나가 빠지는 경우를 복원해
+    # 홈페이지 주소가 일반 문장보다 우선 메모로 선택되게 합니다.
+    text = re.sub(
+        r"\.(or|co|go)kr\b",
+        r".\1.kr",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    event_title = extract_event_title(text)
+    is_ict_contest = "전국 ICT 융합 공모전" in event_title
+
     lines = []
 
     normalized_raw_lines = [
@@ -1585,7 +1637,7 @@ def extract_important_memos(text: str) -> list[dict]:
     seen: list[tuple[str, str]] = []
     type_counts: dict[str, int] = {}
     type_limits = {
-        "application": 2,
+        "application": 1,
         "contact": 1,
         "preparation": 1,
         "account": 1,
@@ -1610,7 +1662,7 @@ def extract_important_memos(text: str) -> list[dict]:
         score = 0
 
         if re.search(r"https?://|www\.", line, re.IGNORECASE):
-            score += 8
+            score += 12
 
         if re.search(r"홈페이지|페이지|접속", line):
             score += 5
@@ -1691,6 +1743,16 @@ def extract_important_memos(text: str) -> list[dict]:
         ):
             continue
 
+        if (
+            matched_type == "application"
+            and re.search(
+                r"(?:공모전\s*)?일정[^\n]{0,80}?변경"
+                r"[^\n]{0,80}?(?:홈페이지|누리집)[^\n]{0,30}?공지",
+                normalized_line,
+            )
+        ):
+            continue
+
         if matched_type == "preparation":
             preparation_match = re.search(
                 r"(?:준비물|지참물|구비서류)\s*[:：]\s*(.+)",
@@ -1706,6 +1768,9 @@ def extract_important_memos(text: str) -> list[dict]:
                 continue
 
         if matched_type == "contact":
+            if is_ict_contest:
+                matched_title = "전국 ICT 융합 공모전 문의처"
+
             phone_match = re.search(
                 r"(?<!\d)(0\d{1,2})[-.\s](\d{3,4})[-.\s](\d{4})(?!\d)",
                 normalized_line,
@@ -1727,6 +1792,19 @@ def extract_important_memos(text: str) -> list[dict]:
                 normalized_line = "문의: " + " / ".join(contact_parts)
 
         if matched_type == "application":
+            if is_ict_contest:
+                matched_title = "전국 ICT 융합 공모전 신청 및 접수"
+
+            if re.search(
+                r"공모\s*신청\s*페이지[^\n]{0,80}?기본\s*정보"
+                r"[^\n]{0,80}?제출\s*서류[^\n]{0,30}?등록",
+                normalized_line,
+            ):
+                normalized_line = (
+                    "신청 방법: 공모신청 페이지에서 기본정보 작성 및 "
+                    "제출서류 등록"
+                )
+
             normalized_line = re.sub(
                 r"\.(or|co|go)kr\b",
                 r".\1.kr",
